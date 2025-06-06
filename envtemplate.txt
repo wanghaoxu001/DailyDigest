@@ -1,0 +1,43 @@
+# 每日安全快报系统环境变量模板
+
+# 数据库设置
+DATABASE_URL=sqlite:///./daily_digest.db
+# 如果使用其他数据库，例如：
+# DATABASE_URL=postgresql://user:password@localhost/daily_digest
+# DATABASE_URL=mysql+pymysql://user:password@localhost/daily_digest
+
+# OpenAI API配置
+OPENAI_API_KEY=your_openai_api_key_here
+# OpenAI 模型选择
+OPENAI_MODEL=gpt-3.5-turbo
+# 针对特定任务的模型配置
+OPENAI_TRANSLATION_MODEL=gpt-4-turbo
+OPENAI_SUMMARIZATION_MODEL=gpt-4-turbo
+# OpenAI API基础URL，可选，留空使用默认OpenAI官方API
+# 用于接入第三方兼容OpenAI API的服务，例如：
+# OPENAI_API_BASE=https://api.moonshot.cn/v1
+# OPENAI_API_BASE=https://api.baidu.com/v1
+OPENAI_API_BASE=
+
+# 服务器配置
+HOST=0.0.0.0
+PORT=18899
+DEBUG=False
+
+# 定时任务配置
+# 新闻抓取的默认间隔时间（秒）
+DEFAULT_FETCH_INTERVAL=3600
+# 是否自动处理新抓取的文章
+ENABLE_AUTO_PROCESS=True
+
+# 文件存储路径
+PDF_STORAGE_PATH=app/static/pdf
+TEMP_STORAGE_PATH=app/static/temp
+
+# 日志配置
+LOG_LEVEL=INFO
+LOG_DIR=logs
+ENABLE_JSON_LOGS=False
+ENABLE_LOG_BUFFER=True
+LOG_MAX_BYTES=10485760
+LOG_BACKUP_COUNT=5 

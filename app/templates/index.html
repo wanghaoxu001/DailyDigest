@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}首页 - 每日安全快报系统{% endblock %}
+
+{% block content %}
+<div class="jumbotron p-5 bg-light rounded">
+    <h1 class="display-4">每日安全快报系统</h1>
+    <p class="lead">自动收集、处理和生成网络安全新闻摘要，帮助您跟踪最新安全动态。</p>
+    <hr class="my-4">
+    <p>每天从多个来源获取最新网络安全信息，使用AI自动处理并生成摘要。</p>
+    <div class="d-grid gap-2 d-md-flex justify-content-md-start">
+        <a href="/news" class="btn btn-primary btn-lg me-md-2">查看今日新闻</a>
+        <a href="/digest" class="btn btn-secondary btn-lg">历史快报</a>
+    </div>
+</div>
+
+<div class="row mt-5">
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">查看今日新闻</h5>
+                <p class="card-text">浏览今天收集的所有网络安全新闻，按类别过滤并选择重要内容纳入快报。</p>
+                <a href="/news" class="btn btn-primary">立即查看</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">生成安全快报</h5>
+                <p class="card-text">从今日新闻中选择重要内容，一键生成分类整理的安全快报。</p>
+                <a href="/news" class="btn btn-primary">开始生成</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">管理新闻源</h5>
+                <p class="card-text">添加、编辑或删除新闻来源，配置抓取周期和处理规则。</p>
+                <a href="/admin" class="btn btn-primary">进入管理</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

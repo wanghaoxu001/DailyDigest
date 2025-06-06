@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+        body {
+            font-family: "SimSun", "宋体", serif;
+            line-height: 1.5;
+            font-size: 12pt;
+        }
+        h1 {
+            text-align: center;
+            font-size: 18pt;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        .date {
+            text-align: center;
+            font-size: 12pt;
+            margin-bottom: 30px;
+        }
+        h3 {
+            font-size: 14pt;
+            font-weight: bold;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+        }
+        .divider {
+            border-top: 1px solid #ddd;
+            margin: 20px 0;
+        }
+        p {
+            text-indent: 2em;
+            margin: 8px 0;
+        }
+        ol {
+            padding-left: 2em;
+        }
+        li {
+            margin-bottom: 10px;
+        }
+        li p {
+            text-indent: 0;
+        }
+        .footer {
+            text-align: center;
+            font-size: 10pt;
+            color: #666;
+            margin-top: 30px;
+        }
+        .page-break {
+            page-break-after: always;
+        }
+    </style>
+</head>
+<body>
+    <h1>{{ title }}</h1>
+    <div class="date">{{ date }}</div>
+    
+    <div class="content">
+        {{ content|safe }}
+    </div>
+    
+    <div class="footer">
+        <p>本快报由每日安全快报系统自动生成</p>
+    </div>
+</body>
+</html> 

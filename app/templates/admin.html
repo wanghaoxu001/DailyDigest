@@ -1,0 +1,1194 @@
+{% extends "base.html" %} {% block title %}管理 - 每日安全快报系统{% endblock %} {% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.5.0/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+    /* Markdown样式 */
+    
+    .markdown-body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        line-height: 1.6;
+    }
+    
+    .markdown-body h1,
+    .markdown-body h2,
+    .markdown-body h3,
+    .markdown-body h4,
+    .markdown-body h5,
+    .markdown-body h6 {
+        margin-top: 16px;
+        margin-bottom: 16px;
+        font-weight: 600;
+        line-height: 1.25;
+    }
+    
+    .markdown-body h1 {
+        font-size: 2em;
+    }
+    
+    .markdown-body h2 {
+        font-size: 1.5em;
+    }
+    
+    .markdown-body h3 {
+        font-size: 1.25em;
+    }
+    
+    .markdown-body h4 {
+        font-size: 1em;
+    }
+    
+    .markdown-body strong {
+        font-weight: 600;
+    }
+    
+    .markdown-body ul,
+    .markdown-body ol {
+        padding-left: 2em;
+        margin-bottom: 16px;
+    }
+    
+    .markdown-body li {
+        margin: 0.25em 0;
+    }
+    
+    .markdown-body p {
+        margin-top: 0;
+        margin-bottom: 16px;
+    }
+    
+    .markdown-body code {
+        padding: 0.2em 0.4em;
+        margin: 0;
+        background-color: rgba(27, 31, 35, 0.05);
+        border-radius: 3px;
+    }
+    
+    .markdown-body pre {
+        padding: 16px;
+        overflow: auto;
+        line-height: 1.45;
+        background-color: #f6f8fa;
+        border-radius: 3px;
+    }
+</style>
+{% endblock %} {% block content %}
+<h2>系统管理</h2>
+
+<ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="sources-tab" data-bs-toggle="tab" data-bs-target="#sources" type="button" role="tab">
+            新闻源管理
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="news-tab" data-bs-toggle="tab" data-bs-target="#news" type="button" role="tab">
+            新闻管理
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="system-tab" data-bs-toggle="tab" data-bs-target="#system" type="button" role="tab">
+            系统设置
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="adminTabsContent">
+    <!-- 新闻源管理 -->
+    <div class="tab-pane fade show active" id="sources" role="tabpanel">
+        <div class="d-flex justify-content-between mb-3">
+            <h3>新闻源管理</h3>
+            <button class="btn btn-primary" id="btnAddSource" data-bs-toggle="modal" data-bs-target="#sourceModal">
+                <i class="bi bi-plus"></i> 添加新闻源
+            </button>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped" id="sourcesTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>名称</th>
+                                <th>类型</th>
+                                <th>URL</th>
+                                <th>状态</th>
+                                <th>配置</th>
+                                <th>最后抓取</th>
+                                <th>Token使用量</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sourcesTableBody">
+                            <!-- 数据将通过JavaScript动态加载 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新闻管理 -->
+    <div class="tab-pane fade" id="news" role="tabpanel">
+        <div class="d-flex justify-content-between mb-3">
+            <h3>新闻管理</h3>
+            <div>
+                <select class="form-select form-select-sm d-inline-block me-2" style="width: auto;" id="newsSourceFilter">
+                    <option value="">所有来源</option>
+                    <!-- 来源选项将动态加载 -->
+                </select>
+                <select class="form-select form-select-sm d-inline-block" style="width: auto;" id="newsCategoryFilter">
+                    <option value="">所有分类</option>
+                    <option value="金融业网络安全事件">金融业网络安全</option>
+                    <option value="重大网络安全事件">重大网络安全</option>
+                    <option value="重大数据泄露事件">数据泄露</option>
+                    <option value="重大漏洞风险提示">漏洞风险</option>
+                    <option value="其他">其他</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <!-- 批量操作按钮 -->
+                <div class="mb-3 d-flex justify-content-between">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="selectAllNews">
+                        <label class="form-check-label" for="selectAllNews">全选</label>
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-primary me-2" id="btnBatchProcess" disabled>
+                            <i class="bi bi-gear"></i> 批量重新处理
+                        </button>
+                        <button class="btn btn-sm btn-danger" id="btnBatchDelete" disabled>
+                            <i class="bi bi-trash"></i> 批量删除
+                        </button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped" id="newsTable">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" class="invisible" disabled></th>
+                                <th>ID</th>
+                                <th>标题</th>
+                                <th>来源</th>
+                                <th>分类</th>
+                                <th>时间</th>
+                                <th>已处理</th>
+                                <th>已用于快报</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="newsTableBody">
+                            <!-- 数据将通过JavaScript动态加载 -->
+                        </tbody>
+                    </table>
+                    <nav>
+                        <ul class="pagination justify-content-center" id="newsPagination">
+                            <!-- 分页控件将动态生成 -->
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系统设置 -->
+    <div class="tab-pane fade" id="system" role="tabpanel">
+        <h3>系统设置</h3>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <form id="systemSettingsForm">
+                    <div class="mb-3">
+                        <label for="apiKey" class="form-label">OpenAI API密钥</label>
+                        <input type="password" class="form-control" id="apiKey" placeholder="输入OpenAI API密钥">
+                    </div>
+                    <div class="mb-3">
+                        <label for="fetchInterval" class="form-label">默认抓取间隔（秒）</label>
+                        <input type="number" class="form-control" id="fetchInterval" value="3600">
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="enableAutoProcess" checked>
+                            <label class="form-check-label" for="enableAutoProcess">自动处理新抓取的文章</label>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">保存设置</button>
+                </form>
+            </div>
+        </div>
+
+        <h3>系统操作</h3>
+        <div class="card">
+            <div class="card-body">
+                <button class="btn btn-warning me-2" id="btnFetchAllSources">
+                    <i class="bi bi-cloud-download"></i> 抓取所有新闻源
+                </button>
+                <button class="btn btn-warning me-2" id="btnProcessAllNews">
+                    <i class="bi bi-gear"></i> 处理所有未处理新闻
+                </button>
+                <button class="btn btn-danger" id="btnClearOldNews">
+                    <i class="bi bi-trash"></i> 清理历史数据
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新闻源模态框 -->
+<div class="modal fade" id="sourceModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="sourceModalTitle">添加新闻源</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="sourceForm">
+                    <input type="hidden" id="sourceId">
+                    <div class="mb-3">
+                        <label for="sourceName" class="form-label">名称</label>
+                        <input type="text" class="form-control" id="sourceName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="sourceUrl" class="form-label">URL</label>
+                        <input type="url" class="form-control" id="sourceUrl" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="sourceType" class="form-label">类型</label>
+                        <select class="form-select" id="sourceType" required>
+                            <option value="rss">RSS订阅源</option>
+                            <option value="webpage">网页抓取</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="xpathConfigGroup" style="display: none;">
+                        <label for="xpathConfig" class="form-label">XPath配置</label>
+                        <textarea class="form-control" id="xpathConfig" rows="3"></textarea>
+                        <small class="form-text text-muted">用于网页抓取的XPath表达式，JSON格式</small>
+                    </div>
+                    <div class="mb-3" id="rssConfigGroup">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="useRssSummary" checked>
+                            <label class="form-check-label" for="useRssSummary">参考RSS原始摘要</label>
+                            <small class="form-text text-muted d-block">勾选后，如果RSS条目包含高质量摘要，将优先使用原始摘要而不是LLM生成摘要</small>
+                        </div>
+                        <div class="form-check mt-3">
+                            <input type="checkbox" class="form-check-input" id="useNewspaper" checked>
+                            <label class="form-check-label" for="useNewspaper">优先使用Newspaper4k获取文章内容</label>
+                            <small class="form-text text-muted d-block">勾选后，将尝试从文章URL获取完整内容，失败时使用RSS条目内容。不勾选则直接使用RSS条目内容</small>
+                        </div>
+                        <div class="form-check mt-3">
+                            <input type="checkbox" class="form-check-input" id="useDescriptionAsSummary">
+                            <label class="form-check-label" for="useDescriptionAsSummary">使用description作为备选摘要</label>
+                            <small class="form-text text-muted d-block">勾选后，当RSS条目的summary质量不佳时，将使用description字段作为备选摘要</small>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="fetchInterval" class="form-label">抓取间隔（秒）</label>
+                        <input type="number" class="form-control" id="sourceFetchInterval" value="3600" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="sourceMaxFetchDays" class="form-label">最多拉取天数</label>
+                        <input type="number" class="form-control" id="sourceMaxFetchDays" value="7" min="1" max="30" required>
+                        <small class="form-text text-muted">设置订阅源拉取新闻时最多拉取最近X天的文章，防止拉取时间过久（1-30天）</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="sourceDescription" class="form-label">描述</label>
+                        <textarea class="form-control" id="sourceDescription" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="sourceActive" checked>
+                        <label class="form-check-label" for="sourceActive">启用</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="btnSaveSource">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新闻详情模态框 -->
+<div class="modal fade" id="newsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="newsModalTitle">新闻详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="newsDetails">
+                    <!-- 新闻详情将动态加载 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" id="btnProcessNews">处理/重新处理</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 日志查看模态框 -->
+<div class="modal fade" id="logsModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">处理日志</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">上次更新: <span id="logTimestamp"></span></span>
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary me-1" id="btnRefreshLogs">
+                            <i class="bi bi-arrow-repeat"></i> 刷新
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" id="btnClearLogs">
+                            <i class="bi bi-trash"></i> 清空
+                        </button>
+                    </div>
+                </div>
+                <div class="bg-dark text-light p-3 rounded" style="height: 500px; overflow-y: auto; font-family: monospace;">
+                    <pre id="logContent" class="m-0"></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} {% block extra_js %}
+<!-- 添加Marked.js库用于Markdown渲染 -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- 添加DOMPurify库用于HTML净化，防止XSS攻击 -->
+<script src="https://cdn.jsdelivr.net/npm/dompurify@2.3.10/dist/purify.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 配置marked.js
+        marked.setOptions({
+            breaks: true, // 转换换行符为<br>
+            gfm: true // 启用GitHub风格的Markdown
+        });
+
+        // 加载新闻源列表
+        loadSources();
+
+        // 加载新闻列表
+        loadNews();
+
+        // 监听新闻源类型变更
+        document.getElementById('sourceType').addEventListener('change', function() {
+            const xpathGroup = document.getElementById('xpathConfigGroup');
+            const rssGroup = document.getElementById('rssConfigGroup');
+            if (this.value === 'webpage') {
+                xpathGroup.style.display = 'block';
+                rssGroup.style.display = 'none';
+            } else {
+                xpathGroup.style.display = 'none';
+                rssGroup.style.display = 'block';
+            }
+        });
+
+        // 保存新闻源
+        document.getElementById('btnSaveSource').addEventListener('click', saveSource);
+
+        // 添加新闻源按钮
+        document.getElementById('btnAddSource').addEventListener('click', function() {
+            // 重置表单
+            document.getElementById('sourceForm').reset();
+            document.getElementById('sourceId').value = '';
+            document.getElementById('sourceFetchInterval').value = '3600';
+            document.getElementById('sourceMaxFetchDays').value = '7';
+            document.getElementById('sourceActive').checked = true;
+            document.getElementById('useRssSummary').checked = true;
+            document.getElementById('useNewspaper').checked = true;
+            document.getElementById('useDescriptionAsSummary').checked = false;
+
+            // 显示/隐藏配置组（默认RSS类型）
+            document.getElementById('xpathConfigGroup').style.display = 'none';
+            document.getElementById('rssConfigGroup').style.display = 'block';
+
+            // 更新标题
+            document.getElementById('sourceModalTitle').textContent = '添加新闻源';
+        });
+
+        // 处理新闻
+        document.getElementById('btnProcessNews').addEventListener('click', processCurrentNews);
+
+        // 新闻筛选器变更事件
+        document.getElementById('newsSourceFilter').addEventListener('change', loadNews);
+        document.getElementById('newsCategoryFilter').addEventListener('change', loadNews);
+
+        // 系统操作按钮
+        document.getElementById('btnFetchAllSources').addEventListener('click', fetchAllSources);
+        document.getElementById('btnProcessAllNews').addEventListener('click', processAllNews);
+        document.getElementById('btnClearOldNews').addEventListener('click', clearOldNews);
+
+        // 系统设置表单提交
+        document.getElementById('systemSettingsForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            saveSystemSettings();
+        });
+
+        // 日志相关按钮
+        document.getElementById('btnRefreshLogs').addEventListener('click', fetchLogs);
+        document.getElementById('btnClearLogs').addEventListener('click', clearLogs);
+
+        // 批量操作相关
+        document.getElementById('selectAllNews').addEventListener('change', toggleSelectAllNews);
+        document.getElementById('btnBatchProcess').addEventListener('click', batchProcessNews);
+        document.getElementById('btnBatchDelete').addEventListener('click', batchDeleteNews);
+    });
+
+    let currentNewsId = null;
+
+    // 加载新闻源列表
+    function loadSources() {
+        axios.get('/api/sources')
+            .then(response => {
+                const sources = response.data;
+                const tbody = document.getElementById('sourcesTableBody');
+                tbody.innerHTML = '';
+
+                const sourceFilter = document.getElementById('newsSourceFilter');
+                sourceFilter.innerHTML = '<option value="">所有来源</option>';
+
+                sources.forEach(source => {
+                    // 添加到表格
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${source.id}</td>
+                        <td>${source.name}</td>
+                        <td>${source.type === 'rss' ? 'RSS订阅源' : '网页抓取'}</td>
+                        <td><a href="${source.url}" target="_blank">${source.url.substring(0, 30)}...</a></td>
+                        <td>${source.active ? '<span class="badge bg-success">激活</span>' : '<span class="badge bg-secondary">停用</span>'}</td>
+                        <td>
+                            <small class="text-muted">
+                                间隔: ${Math.round(source.fetch_interval / 3600)}h<br>
+                                天数: ${source.max_fetch_days || 7}天<br>
+                                ${source.type === 'rss' ? (source.use_description_as_summary ? '使用备选摘要' : '仅summary') : ''}
+                            </small>
+                        </td>
+                        <td>${source.last_fetch || '从未'}</td>
+                        <td>${source.tokens_used ? source.tokens_used.toLocaleString() : '0'} 
+                            <button class="btn btn-sm btn-outline-secondary" title="重置Token计数" onclick="resetTokens(${source.id})">
+                                <i class="bi bi-arrow-counterclockwise"></i>
+                            </button>
+                            <br>
+                            <small class="text-muted">
+                                输入: ${source.prompt_tokens ? source.prompt_tokens.toLocaleString() : '0'} | 
+                                输出: ${source.completion_tokens ? source.completion_tokens.toLocaleString() : '0'}
+                            </small>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="editSource(${source.id})">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-success me-1" onclick="fetchSource(${source.id})">
+                                <i class="bi bi-cloud-download"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-info me-1" onclick="viewLogs()">
+                                <i class="bi bi-file-text"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteSource(${source.id})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+
+                    // 添加到过滤器
+                    const option = document.createElement('option');
+                    option.value = source.id;
+                    option.textContent = source.name;
+                    sourceFilter.appendChild(option);
+                });
+            })
+            .catch(error => {
+                console.error('Error loading sources:', error);
+                alert('加载新闻源失败');
+            });
+    }
+
+    // 加载新闻列表
+    function loadNews(page = 1) {
+        // 确保page是有效数字
+        page = Number(page) || 1;
+        page = Math.max(1, page);
+
+        const sourceId = document.getElementById('newsSourceFilter').value;
+        const category = document.getElementById('newsCategoryFilter').value;
+
+        // 确保skip是有效的非负整数
+        const skip = (page - 1) * 20;
+        let url = `/api/news?skip=${skip}&limit=20&enable_similarity_filter=false`;
+        if (sourceId) url += `&source_id=${sourceId}`;
+        if (category) url += `&category=${category}`;
+
+        axios.get(url)
+            .then(response => {
+                const {
+                    items,
+                    total
+                } = response.data;
+                const tbody = document.getElementById('newsTableBody');
+                tbody.innerHTML = '';
+
+                // 清空已选状态
+                selectedNewsIds = new Set();
+                updateBatchButtons();
+
+                items.forEach(news => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>
+                            <input type="checkbox" class="form-check-input news-checkbox" 
+                                   data-id="${news.id}" ${selectedNewsIds.has(news.id) ? 'checked' : ''}>
+                        </td>
+                        <td>${news.id}</td>
+                        <td>${news.title.substring(0, 30)}${news.title.length > 30 ? '...' : ''}</td>
+                        <td>${news.source_id}</td>
+                        <td>${getCategoryLabel(news.category)}</td>
+                        <td>${formatDate(news.created_at)}</td>
+                        <td>${news.is_processed ? '<span class="badge bg-success">是</span>' : '<span class="badge bg-warning">否</span>'}</td>
+                        <td>${news.is_used_in_digest ? '<span class="badge bg-success">是</span>' : '<span class="badge bg-secondary">否</span>'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="viewNews(${news.id})">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+
+                    // 绑定复选框事件
+                    const checkbox = row.querySelector('.news-checkbox');
+                    checkbox.addEventListener('change', function() {
+                        const newsId = parseInt(this.getAttribute('data-id'));
+                        if (this.checked) {
+                            selectedNewsIds.add(newsId);
+                        } else {
+                            selectedNewsIds.delete(newsId);
+                        }
+                        updateBatchButtons();
+                    });
+                });
+
+                // 生成分页控件
+                const pagination = document.getElementById('newsPagination');
+                pagination.innerHTML = '';
+
+                const totalPages = Math.ceil(total / 20);
+
+                // 上一页
+                const prevLi = document.createElement('li');
+                prevLi.className = `page-item ${page === 1 ? 'disabled' : ''}`;
+                prevLi.innerHTML = `<a class="page-link" href="#" onclick="loadNews(${page - 1}); return false;">上一页</a>`;
+                pagination.appendChild(prevLi);
+
+                // 页码
+                for (let i = 1; i <= totalPages; i++) {
+                    if (
+                        i === 1 ||
+                        i === totalPages ||
+                        (i >= page - 2 && i <= page + 2)
+                    ) {
+                        const li = document.createElement('li');
+                        li.className = `page-item ${i === page ? 'active' : ''}`;
+                        li.innerHTML = `<a class="page-link" href="#" onclick="loadNews(${i}); return false;">${i}</a>`;
+                        pagination.appendChild(li);
+                    } else if (
+                        (i === page - 3 && page > 4) ||
+                        (i === page + 3 && page < totalPages - 3)
+                    ) {
+                        const li = document.createElement('li');
+                        li.className = 'page-item disabled';
+                        li.innerHTML = '<a class="page-link" href="#">...</a>';
+                        pagination.appendChild(li);
+                    }
+                }
+
+                // 下一页
+                const nextLi = document.createElement('li');
+                nextLi.className = `page-item ${page === totalPages ? 'disabled' : ''}`;
+                nextLi.innerHTML = `<a class="page-link" href="#" onclick="loadNews(${page + 1}); return false;">下一页</a>`;
+                pagination.appendChild(nextLi);
+            })
+            .catch(error => {
+                console.error('Error loading news:', error);
+                alert('加载新闻失败');
+            });
+    }
+
+    // 查看新闻详情
+    function viewNews(newsId) {
+        currentNewsId = newsId;
+
+        axios.get(`/api/news/${newsId}`)
+            .then(response => {
+                    const news = response.data;
+                    const details = document.getElementById('newsDetails');
+
+                    let entitiesHtml = '';
+                    if (news.entities) {
+                        entitiesHtml = '<div class="mt-3"><h6><strong>提取的实体</strong></h6><ul>';
+
+                        // 检查实体是否为数组格式
+                        if (Array.isArray(news.entities)) {
+                            news.entities.forEach(entity => {
+                                if (typeof entity === 'object' && entity !== null) {
+                                    // 处理不同格式的实体对象
+                                    if (entity.type && entity.value) {
+                                        // 标准格式 {type: "...", value: "..."}
+                                        entitiesHtml += `<li><strong>${entity.type}:</strong> ${entity.value}</li>`;
+                                    } else {
+                                        // 处理其他格式 {key: value}
+                                        const entityType = Object.keys(entity)[0] || '未知类型';
+                                        const entityValue = entity[entityType] || '未知';
+                                        entitiesHtml += `<li><strong>${entityType}:</strong> ${entityValue}</li>`;
+                                    }
+                                } else {
+                                    entitiesHtml += `<li>${entity}</li>`;
+                                }
+                            });
+                        }
+                        // 检查实体是否为对象格式
+                        else if (typeof news.entities === 'object') {
+                            // 检查是否有type和value字段的特殊对象
+                            if (news.entities.type && news.entities.value) {
+                                entitiesHtml += `<li><strong>${news.entities.type}:</strong> ${news.entities.value}</li>`;
+                            } else {
+                                // 常规对象格式 {key1: value1, key2: value2}
+                                for (const [key, value] of Object.entries(news.entities)) {
+                                    if (key !== 'error') {
+                                        entitiesHtml += `<li><strong>${key}:</strong> ${value}</li>`;
+                                    }
+                                }
+                            }
+                        }
+
+                        entitiesHtml += '</ul></div>';
+                    }
+
+                    details.innerHTML = `
+                    <h4>${news.title}</h4>
+                    <div class="text-muted mb-2">来源: ${news.source_id} | 时间: ${formatDate(news.created_at)}</div>
+                    
+                    <div class="card mb-3">
+                        <div class="card-header bg-light">原始内容摘要</div>
+                        <div class="card-body">
+                            <p>${news.summary}</p>
+                            <a href="${news.original_url}" target="_blank" class="btn btn-sm btn-outline-primary">查看原文</a>
+                        </div>
+                    </div>
+                    
+                    <div class="card mb-3">
+                        <div class="card-header bg-light">处理结果</div>
+                        <div class="card-body">
+                            ${news.is_processed ? `
+                                <div class="mb-2"><strong>一句话标题:</strong> ${news.generated_title || '暂无'}</div>
+                                <div class="mb-2"><strong>摘要:</strong> ${news.generated_summary || '暂无'}</div>
+                                
+                                <!-- 详细文章总结部分 -->
+                                <div class="mb-2"><strong>文章总结状态:</strong> ${news.article_summary ? '已生成' : '未生成'}</div>
+                                ${news.article_summary ? `
+                                <div class="card mb-3 mt-3">
+                                    <div class="card-header bg-light">详细文章总结</div>
+                                    <div class="card-body">
+                                        <div class="article-summary markdown-body" id="articleSummaryContent">${DOMPurify.sanitize(marked.parse(news.article_summary))}</div>
+                                    </div>
+                                </div>
+                                ` : '<div class="alert alert-info mt-2">该新闻还没有生成详细文章总结，请使用"处理/重新处理"功能重新处理此新闻</div>'}
+                                
+                                <div class="mb-2"><strong>分类:</strong> ${getCategoryLabel(news.category)}</div>
+                                ${entitiesHtml}
+                            ` : '<div class="alert alert-warning">该新闻尚未处理</div>'}
+                        </div>
+                    </div>
+
+                    <!-- 调试信息 -->
+                    <div class="card mb-3">
+                        <div class="card-header bg-light">调试信息</div>
+                        <div class="card-body">
+                            <pre class="bg-light p-2 border rounded"><code>${JSON.stringify({
+                                id: news.id,
+                                is_processed: news.is_processed,
+                                has_article_summary: news.article_summary ? true : false,
+                                article_summary_length: news.article_summary ? news.article_summary.length : 0
+                            }, null, 2)}</code></pre>
+                        </div>
+                    </div>
+                `;
+                
+                // 显示模态框
+                const modal = new bootstrap.Modal(document.getElementById('newsModal'));
+                modal.show();
+            })
+            .catch(error => {
+                console.error('Error loading news details:', error);
+                alert('加载新闻详情失败');
+            });
+    }
+    
+    // 添加新闻源
+    function addSource() {
+        // 重置表单
+        document.getElementById('sourceForm').reset();
+        document.getElementById('sourceId').value = '';
+        document.getElementById('sourceModalTitle').textContent = '添加新闻源';
+        
+        // 显示模态框
+        const modal = new bootstrap.Modal(document.getElementById('sourceModal'));
+        modal.show();
+    }
+    
+    // 编辑新闻源
+    function editSource(sourceId) {
+        // 获取新闻源信息
+        axios.get(`/api/sources/${sourceId}`)
+            .then(response => {
+                const source = response.data;
+                
+                // 填充表单
+                document.getElementById('sourceId').value = source.id;
+                document.getElementById('sourceName').value = source.name;
+                document.getElementById('sourceUrl').value = source.url;
+                document.getElementById('sourceType').value = source.type;
+                document.getElementById('sourceFetchInterval').value = source.fetch_interval;
+                document.getElementById('sourceMaxFetchDays').value = source.max_fetch_days || 7;
+                document.getElementById('sourceDescription').value = source.description || '';
+                document.getElementById('sourceActive').checked = source.active;
+                document.getElementById('xpathConfig').value = source.xpath_config || '';
+                document.getElementById('useRssSummary').checked = source.use_rss_summary !== undefined ? source.use_rss_summary : true;
+                document.getElementById('useNewspaper').checked = source.use_newspaper !== undefined ? source.use_newspaper : true;
+                document.getElementById('useDescriptionAsSummary').checked = source.use_description_as_summary !== undefined ? source.use_description_as_summary : false;
+                
+                // 显示/隐藏配置组
+                const xpathGroup = document.getElementById('xpathConfigGroup');
+                const rssGroup = document.getElementById('rssConfigGroup');
+                if (source.type === 'webpage') {
+                    xpathGroup.style.display = 'block';
+                    rssGroup.style.display = 'none';
+                } else {
+                    xpathGroup.style.display = 'none';
+                    rssGroup.style.display = 'block';
+                }
+                
+                // 更新标题
+                document.getElementById('sourceModalTitle').textContent = '编辑新闻源';
+                
+                // 显示模态框
+                const modal = new bootstrap.Modal(document.getElementById('sourceModal'));
+                modal.show();
+            })
+            .catch(error => {
+                console.error('Error loading source:', error);
+                alert('加载新闻源信息失败');
+            });
+    }
+    
+    // 保存新闻源
+    function saveSource() {
+        const sourceId = document.getElementById('sourceId').value;
+        const sourceData = {
+            name: document.getElementById('sourceName').value,
+            url: document.getElementById('sourceUrl').value,
+            type: document.getElementById('sourceType').value,
+            fetch_interval: parseInt(document.getElementById('sourceFetchInterval').value),
+            max_fetch_days: parseInt(document.getElementById('sourceMaxFetchDays').value),
+            description: document.getElementById('sourceDescription').value,
+            active: document.getElementById('sourceActive').checked,
+            xpath_config: document.getElementById('xpathConfig').value,
+            use_rss_summary: document.getElementById('useRssSummary').checked,
+            use_newspaper: document.getElementById('useNewspaper').checked,
+            use_description_as_summary: document.getElementById('useDescriptionAsSummary').checked
+        };
+        
+        if (sourceId) {
+            // 更新
+            axios.put(`/api/sources/${sourceId}`, sourceData)
+                .then(() => {
+                    // 关闭模态框
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('sourceModal'));
+                    modal.hide();
+                    
+                    // 重新加载列表
+                    loadSources();
+                })
+                .catch(error => {
+                    console.error('Error updating source:', error);
+                    alert('更新新闻源失败');
+                });
+        } else {
+            // 创建
+            axios.post('/api/sources', sourceData)
+                .then(() => {
+                    // 关闭模态框
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('sourceModal'));
+                    modal.hide();
+                    
+                    // 重新加载列表
+                    loadSources();
+                })
+                .catch(error => {
+                    console.error('Error creating source:', error);
+                    alert('创建新闻源失败');
+                });
+        }
+    }
+    
+    // 删除新闻源
+    function deleteSource(sourceId) {
+        if (confirm('确定要删除此新闻源吗？')) {
+            axios.delete(`/api/sources/${sourceId}`)
+                .then(() => {
+                    loadSources();
+                })
+                .catch(error => {
+                    console.error('Error deleting source:', error);
+                    alert('删除新闻源失败');
+                });
+        }
+    }
+    
+    // 重置token统计
+    function resetTokens(sourceId) {
+        if (confirm('确定要重置此新闻源的Token使用统计吗？')) {
+            axios.post(`/api/sources/${sourceId}/reset-tokens`)
+                .then(response => {
+                    alert('Token统计已重置');
+                    // 重新加载源列表
+                    loadSources();
+                })
+                .catch(error => {
+                    console.error('Error resetting tokens:', error);
+                    alert('重置Token统计失败');
+                });
+        }
+    }
+    
+    // 手动触发抓取
+    function fetchSource(sourceId) {
+        if (confirm('确定要手动抓取该新闻源吗？这可能需要一些时间')) {
+            // 显示加载状态
+            const btn = document.querySelector(`button[onclick="fetchSource(${sourceId})"]`);
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 抓取中...';
+            btn.disabled = true;
+            
+            axios.post(`/api/sources/${sourceId}/crawl`)
+                .then(() => {
+                    // 恢复按钮状态
+                    btn.innerHTML = originalHtml;
+                    btn.disabled = false;
+                    
+                    // 显示成功消息
+                    alert('抓取任务已触发，请查看日志了解详情');
+                    
+                    // 自动打开日志查看器
+                    setTimeout(() => {
+                        viewLogs();
+                    }, 500);
+                })
+                .catch(error => {
+                    // 恢复按钮状态
+                    btn.innerHTML = originalHtml;
+                    btn.disabled = false;
+                    
+                    console.error('Error triggering crawl:', error);
+                    alert('触发抓取任务失败');
+                });
+        }
+    }
+    
+    // 处理当前查看的新闻
+    function processCurrentNews() {
+        if (!currentNewsId) return;
+        
+        // 显示处理中状态
+        const btn = document.getElementById('btnProcessNews');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 处理中...';
+        
+        axios.post(`/api/news/${currentNewsId}/process`)
+            .then(() => {
+                // 恢复按钮状态
+                btn.disabled = false;
+                btn.textContent = originalText;
+                
+                // 关闭当前模态框
+                const modal = bootstrap.Modal.getInstance(document.getElementById('newsModal'));
+                if (modal) {
+                    modal.hide();
+                }
+                
+                // 显示成功消息
+                alert('处理完成');
+                
+                // 刷新新闻列表
+                loadNews();
+            })
+            .catch(error => {
+                // 恢复按钮状态
+                btn.disabled = false;
+                btn.textContent = originalText;
+                
+                console.error('Error processing news:', error);
+                alert('处理新闻失败');
+            });
+    }
+    
+    // 抓取所有新闻源
+    function fetchAllSources() {
+        if (confirm('确定要抓取所有活跃的新闻源吗？')) {
+            // 实际项目中这里应该有一个API来触发批量抓取
+            alert('批量抓取功能尚未实现');
+        }
+    }
+    
+    // 处理所有未处理新闻
+    function processAllNews() {
+        if (confirm('确定要处理所有未处理的新闻吗？')) {
+            // 实际项目中这里应该有一个API来触发批量处理
+            alert('批量处理功能尚未实现');
+        }
+    }
+    
+    // 清理历史数据
+    function clearOldNews() {
+        if (confirm('确定要清理历史新闻数据吗？')) {
+            // 实际项目中这里应该有一个API来清理数据
+            alert('数据清理功能尚未实现');
+        }
+    }
+    
+    // 保存系统设置
+    function saveSystemSettings() {
+        const settings = {
+            api_key: document.getElementById('apiKey').value,
+            fetch_interval: parseInt(document.getElementById('fetchInterval').value),
+            enable_auto_process: document.getElementById('enableAutoProcess').checked
+        };
+        
+        // 实际项目中这里应该有一个API来保存设置
+        alert('设置保存功能尚未实现');
+        console.log('Settings:', settings);
+    }
+    
+    // 辅助函数 - 格式化日期
+    function formatDate(dateStr) {
+        if (!dateStr) return '';
+        const date = new Date(dateStr);
+        return date.toLocaleString();
+    }
+    
+    // 辅助函数 - 获取分类标签
+    function getCategoryLabel(category) {
+        const categories = {
+            '金融业网络安全事件': '<span class="badge bg-info">金融业</span>',
+            '重大网络安全事件': '<span class="badge bg-danger">重大事件</span>',
+            '重大数据泄露事件': '<span class="badge bg-warning">数据泄露</span>',
+            '重大漏洞风险提示': '<span class="badge bg-primary">漏洞风险</span>',
+            '其他': '<span class="badge bg-secondary">其他</span>'
+        };
+        
+        return categories[category] || categories['其他'];
+    }
+    
+    // 日志查看功能
+    function viewLogs() {
+        fetchLogs();
+        const modal = new bootstrap.Modal(document.getElementById('logsModal'));
+        modal.show();
+    }
+    
+    function fetchLogs() {
+        axios.get('/api/sources/logs')
+            .then(response => {
+                const { logs, timestamp } = response.data;
+                document.getElementById('logContent').textContent = logs.join('\n');
+                document.getElementById('logTimestamp').textContent = new Date(timestamp).toLocaleString();
+                
+                // 滚动到底部
+                const logContainer = document.getElementById('logContent').parentNode;
+                logContainer.scrollTop = logContainer.scrollHeight;
+            })
+            .catch(error => {
+                console.error('获取日志失败:', error);
+                document.getElementById('logContent').textContent = '获取日志失败: ' + error.message;
+            });
+    }
+    
+    function clearLogs() {
+        if (confirm('确定要清空日志吗？')) {
+            axios.post('/api/sources/logs/clear')
+                .then(() => {
+                    document.getElementById('logContent').textContent = '日志已清空';
+                    document.getElementById('logTimestamp').textContent = new Date().toLocaleString();
+                })
+                .catch(error => {
+                    console.error('清空日志失败:', error);
+                    alert('清空日志失败');
+                });
+        }
+    }
+    
+    // 存储选中的新闻ID
+    let selectedNewsIds = new Set();
+    
+    // 切换全选/取消全选
+    function toggleSelectAllNews() {
+        const selectAll = document.getElementById('selectAllNews').checked;
+        
+        // 获取当前筛选条件
+        const sourceId = document.getElementById('newsSourceFilter').value;
+        const category = document.getElementById('newsCategoryFilter').value;
+        
+        // 构建API URL
+        let url = `/api/news?limit=1000&enable_similarity_filter=false`; // 使用较大的limit值获取所有符合条件的新闻
+        if (sourceId) url += `&source_id=${sourceId}`;
+        if (category) url += `&category=${category}`;
+        
+        // 获取所有符合条件的新闻ID
+        axios.get(url)
+            .then(response => {
+                const { items } = response.data;
+                
+                // 更新选中状态
+            if (selectAll) {
+                    items.forEach(news => {
+                        selectedNewsIds.add(news.id);
+                    });
+            } else {
+                    selectedNewsIds.clear();
+            }
+                
+                // 更新当前页面的复选框状态
+                const checkboxes = document.querySelectorAll('.news-checkbox');
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = selectAll;
+        });
+        
+        updateBatchButtons();
+            })
+            .catch(error => {
+                console.error('获取新闻列表失败:', error);
+                alert('获取新闻列表失败，请重试');
+            });
+    }
+    
+    // 更新批量操作按钮状态
+    function updateBatchButtons() {
+        const count = selectedNewsIds.size;
+        const batchProcess = document.getElementById('btnBatchProcess');
+        const batchDelete = document.getElementById('btnBatchDelete');
+        
+        batchProcess.disabled = count === 0;
+        batchDelete.disabled = count === 0;
+        
+        // 更新按钮文本，显示选中数量
+        batchProcess.innerHTML = `<i class="bi bi-gear"></i> 批量重新处理 (${count})`;
+        batchDelete.innerHTML = `<i class="bi bi-trash"></i> 批量删除 (${count})`;
+        
+        // 同步全选框状态
+        const selectAllCheckbox = document.getElementById('selectAllNews');
+        const allCheckboxes = document.querySelectorAll('.news-checkbox');
+        
+        if (allCheckboxes.length > 0) {
+            selectAllCheckbox.checked = count === allCheckboxes.length;
+            selectAllCheckbox.indeterminate = count > 0 && count < allCheckboxes.length;
+        } else {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        }
+    }
+    
+    // 批量处理新闻
+    function batchProcessNews() {
+        if (selectedNewsIds.size === 0) return;
+        
+        if (!confirm(`确定要重新处理 ${selectedNewsIds.size} 条新闻吗？这可能需要一些时间。`)) return;
+        
+        // 禁用按钮，显示处理中状态
+        const btn = document.getElementById('btnBatchProcess');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 处理中...';
+        
+        // 创建处理队列
+        const newsIds = Array.from(selectedNewsIds);
+        let processed = 0;
+        let failed = 0;
+        
+        // 定义递归处理函数
+        function processNext(index) {
+            if (index >= newsIds.length) {
+                // 处理完成
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                alert(`处理完成：成功${processed}条，失败${failed}条`);
+                loadNews(); // 刷新列表
+                return;
+            }
+            
+            const newsId = newsIds[index];
+            axios.post(`/api/news/${newsId}/process`)
+                .then(() => {
+                    processed++;
+                    processNext(index + 1);
+                })
+                .catch(error => {
+                    console.error(`处理新闻 ID ${newsId} 失败:`, error);
+                    failed++;
+                    processNext(index + 1);
+                });
+        }
+        
+        // 开始处理
+        processNext(0);
+    }
+    
+    // 批量删除新闻
+    function batchDeleteNews() {
+        if (selectedNewsIds.size === 0) return;
+        
+        if (!confirm(`确定要删除 ${selectedNewsIds.size} 条新闻吗？此操作不可撤销！`)) return;
+        
+        // 禁用按钮，显示处理中状态
+        const btn = document.getElementById('btnBatchDelete');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 删除中...';
+        
+        // 调用批量删除API
+        axios.delete('/api/news/batch', {
+            data: { news_ids: Array.from(selectedNewsIds) }
+        })
+        .then(response => {
+            // 恢复按钮状态
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            
+            // 显示成功消息
+            alert(`删除成功: ${selectedNewsIds.size}条新闻已删除`);
+            
+            // 刷新新闻列表
+            selectedNewsIds.clear();
+            loadNews();
+        })
+        .catch(error => {
+            // 恢复按钮状态
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            
+            console.error('批量删除失败:', error);
+            alert(`批量删除失败: ${error.response?.data?.detail || error.message}`);
+        });
+    }
+</script>
+{% endblock %}

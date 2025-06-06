@@ -1,0 +1,424 @@
+{% extends "base.html" %}
+
+{% block title %}快报 - 每日安全快报系统{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simplemde@1.11.2/dist/simplemde.min.css">
+<style>
+    .digest-preview {
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+        padding: 1rem;
+        background-color: #fff;
+    }
+    .digest-card {
+        transition: all 0.3s;
+    }
+    .digest-card:hover {
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    .CodeMirror {
+        height: 500px !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>快报管理</h2>
+    <div>
+        <a href="/news" class="btn btn-primary">生成新快报</a>
+    </div>
+</div>
+
+<ul class="nav nav-tabs mb-4" id="digestTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="latest-tab" data-bs-toggle="tab" data-bs-target="#latest" type="button" role="tab">
+            最新快报
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history" type="button" role="tab">
+            历史快报
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="digestTabsContent">
+    <!-- 最新快报 -->
+    <div class="tab-pane fade show active" id="latest" role="tabpanel">
+        <div id="latestDigestContainer">
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 历史快报 -->
+    <div class="tab-pane fade" id="history" role="tabpanel">
+        <div class="row" id="historyDigestContainer">
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 快报编辑模态框 -->
+<div class="modal fade" id="editDigestModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editDigestTitle">编辑快报</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editDigestForm">
+                    <input type="hidden" id="editDigestId">
+                    <div class="mb-3">
+                        <label for="editDigestTitleInput" class="form-label">标题</label>
+                        <input type="text" class="form-control" id="editDigestTitleInput" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editDigestContent" class="form-label">内容</label>
+                        <textarea id="editDigestContent" class="form-control"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="btnSaveDigest">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 快报详情模态框 -->
+<div class="modal fade" id="viewDigestModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="viewDigestTitle">快报详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="viewDigestContent" class="digest-preview"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" id="btnEditDigest">编辑</button>
+                <a href="#" class="btn btn-success" id="btnDownloadPdf" target="_blank">下载PDF</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/simplemde@1.11.2/dist/simplemde.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    let simplemde = null;
+    let currentDigestId = null;
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        // 加载最新快报
+        loadLatestDigest();
+        
+        // 加载历史快报
+        document.getElementById('history-tab').addEventListener('click', function() {
+            loadHistoryDigests();
+        });
+        
+        // 保存快报按钮事件
+        document.getElementById('btnSaveDigest').addEventListener('click', saveDigest);
+        
+        // 编辑快报按钮事件
+        document.getElementById('btnEditDigest').addEventListener('click', function() {
+            // 关闭查看模态框
+            const viewModal = bootstrap.Modal.getInstance(document.getElementById('viewDigestModal'));
+            viewModal.hide();
+            
+            // 打开编辑模态框
+            editDigest(currentDigestId);
+        });
+    });
+    
+    // 加载最新快报
+    function loadLatestDigest() {
+        axios.get('/api/digest/latest')
+            .then(response => {
+                const digest = response.data;
+                const container = document.getElementById('latestDigestContainer');
+                
+                if (!digest) {
+                    container.innerHTML = `
+                        <div class="alert alert-info">
+                            <p>没有找到任何快报。</p>
+                            <a href="/news" class="btn btn-primary">生成第一份快报</a>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // 渲染快报预览
+                container.innerHTML = `
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">${digest.title}</h5>
+                            <span class="badge bg-primary">${formatDate(digest.date)}</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="digest-preview">
+                                ${marked.parse(digest.content || '')}
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <div class="btn-group">
+                                <button class="btn btn-primary" onclick="editDigest(${digest.id})">
+                                    <i class="bi bi-pencil"></i> 编辑
+                                </button>
+                                <a href="/api/digest/${digest.id}/pdf" class="btn btn-success" target="_blank">
+                                    <i class="bi bi-file-pdf"></i> 下载PDF
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            })
+            .catch(error => {
+                console.error('Error loading latest digest:', error);
+                document.getElementById('latestDigestContainer').innerHTML = `
+                    <div class="alert alert-danger">
+                        <p>加载最新快报失败。</p>
+                        <a href="/news" class="btn btn-primary">生成新快报</a>
+                    </div>
+                `;
+            });
+    }
+    
+    // 加载历史快报
+    function loadHistoryDigests() {
+        axios.get('/api/digest')
+            .then(response => {
+                const digests = response.data;
+                const container = document.getElementById('historyDigestContainer');
+                
+                if (digests.length === 0) {
+                    container.innerHTML = `
+                        <div class="col-12">
+                            <div class="alert alert-info">
+                                <p>没有找到任何历史快报。</p>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // 清空容器
+                container.innerHTML = '';
+                
+                // 渲染快报卡片
+                digests.forEach(digest => {
+                    const card = document.createElement('div');
+                    card.className = 'col-md-4 mb-4';
+                    card.innerHTML = `
+                        <div class="card digest-card h-100">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">${digest.title}</h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="card-text">
+                                    <strong>日期:</strong> ${formatDate(digest.date)}<br>
+                                    <strong>创建时间:</strong> ${formatDate(digest.created_at)}<br>
+                                </p>
+                                <div class="mt-2">
+                                    ${renderNewsCountBadges(digest.news_counts)}
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <button class="btn btn-sm btn-primary" onclick="viewDigest(${digest.id})">
+                                    <i class="bi bi-eye"></i> 查看
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="editDigest(${digest.id})">
+                                    <i class="bi bi-pencil"></i> 编辑
+                                </button>
+                                <a href="/api/digest/${digest.id}/pdf" class="btn btn-sm btn-outline-success" target="_blank">
+                                    <i class="bi bi-file-pdf"></i> PDF
+                                </a>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+            })
+            .catch(error => {
+                console.error('Error loading history digests:', error);
+                document.getElementById('historyDigestContainer').innerHTML = `
+                    <div class="col-12">
+                        <div class="alert alert-danger">
+                            <p>加载历史快报失败。</p>
+                        </div>
+                    </div>
+                `;
+            });
+    }
+    
+    // 查看快报详情
+    function viewDigest(digestId) {
+        currentDigestId = digestId;
+        
+        axios.get(`/api/digest/${digestId}`)
+            .then(response => {
+                const digest = response.data;
+                
+                // 设置标题
+                document.getElementById('viewDigestTitle').textContent = digest.title;
+                
+                // 渲染内容
+                document.getElementById('viewDigestContent').innerHTML = marked.parse(digest.content || '');
+                
+                // 设置PDF下载链接
+                document.getElementById('btnDownloadPdf').href = `/api/digest/${digestId}/pdf`;
+                
+                // 显示模态框
+                const modal = new bootstrap.Modal(document.getElementById('viewDigestModal'));
+                modal.show();
+            })
+            .catch(error => {
+                console.error('Error loading digest details:', error);
+                alert('加载快报详情失败');
+            });
+    }
+    
+    // 编辑快报
+    function editDigest(digestId) {
+        currentDigestId = digestId;
+        
+        axios.get(`/api/digest/${digestId}`)
+            .then(response => {
+                const digest = response.data;
+                
+                // 设置表单值
+                document.getElementById('editDigestId').value = digest.id;
+                document.getElementById('editDigestTitleInput').value = digest.title;
+                document.getElementById('editDigestContent').value = digest.content || '';
+                
+                // 初始化Markdown编辑器
+                if (simplemde) {
+                    simplemde.value(digest.content || '');
+                } else {
+                    simplemde = new SimpleMDE({
+                        element: document.getElementById('editDigestContent'),
+                        spellChecker: false,
+                        autosave: {
+                            enabled: true,
+                            uniqueId: 'digestEditor',
+                            delay: 1000,
+                        }
+                    });
+                }
+                
+                // 显示模态框
+                const modal = new bootstrap.Modal(document.getElementById('editDigestModal'));
+                modal.show();
+            })
+            .catch(error => {
+                console.error('Error loading digest for editing:', error);
+                alert('加载快报编辑信息失败');
+            });
+    }
+    
+    // 保存快报
+    function saveDigest() {
+        const digestId = document.getElementById('editDigestId').value;
+        const title = document.getElementById('editDigestTitleInput').value;
+        const content = simplemde.value();
+        
+        if (!title) {
+            alert('请输入快报标题');
+            return;
+        }
+        
+        const digestData = {
+            title: title,
+            content: content
+        };
+        
+        axios.put(`/api/digest/${digestId}`, digestData)
+            .then(() => {
+                // 关闭模态框
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editDigestModal'));
+                modal.hide();
+                
+                // 重新加载快报
+                loadLatestDigest();
+                
+                // 如果历史标签页是激活的，也重新加载历史快报
+                if (document.getElementById('history-tab').classList.contains('active')) {
+                    loadHistoryDigests();
+                }
+                
+                alert('快报保存成功');
+            })
+            .catch(error => {
+                console.error('Error saving digest:', error);
+                alert('保存快报失败');
+            });
+    }
+    
+    // 生成PDF
+    function generatePdf(digestId) {
+        axios.post(`/api/digest/${digestId}/generate-pdf`)
+            .then(response => {
+                const pdfUrl = `/api/digest/${digestId}/pdf`;
+                window.open(pdfUrl, '_blank');
+            })
+            .catch(error => {
+                console.error('Error generating PDF:', error);
+                alert('生成PDF失败');
+            });
+    }
+    
+    // 辅助函数 - 格式化日期
+    function formatDate(dateStr) {
+        if (!dateStr) return '';
+        const date = new Date(dateStr);
+        return date.toLocaleString();
+    }
+    
+    // 辅助函数 - 渲染新闻计数徽章
+    function renderNewsCountBadges(counts) {
+        if (!counts) return '';
+        
+        const badges = [];
+        const categoryLabels = {
+            '金融业网络安全事件': '金融业',
+            '重大网络安全事件': '重大事件',
+            '重大数据泄露事件': '数据泄露',
+            '重大漏洞风险提示': '漏洞风险',
+            '其他': '其他'
+        };
+        
+        const categoryColors = {
+            '金融业网络安全事件': 'info',
+            '重大网络安全事件': 'danger',
+            '重大数据泄露事件': 'warning',
+            '重大漏洞风险提示': 'primary',
+            '其他': 'secondary'
+        };
+        
+        for (const [category, count] of Object.entries(counts)) {
+            const label = categoryLabels[category] || category;
+            const color = categoryColors[category] || 'secondary';
+            badges.push(`<span class="badge bg-${color} me-1">${label}: ${count}</span>`);
+        }
+        
+        return badges.join(' ');
+    }
+</script>
+{% endblock %} 

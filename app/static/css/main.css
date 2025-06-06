@@ -1,0 +1,62 @@
+/* 全局样式 */
+body {
+    font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+}
+
+/* 页脚样式 */
+.footer {
+    margin-top: 3rem;
+}
+
+/* 卡片悬停效果 */
+.card-hover:hover {
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+    transition: all 0.3s ease;
+}
+
+/* 分类标签样式 */
+.category-badge {
+    font-size: 0.8rem;
+}
+
+/* 自定义表格样式 */
+.table-custom th {
+    background-color: #f8f9fa;
+}
+
+/* 内容预览区域 */
+.content-preview {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    padding: 1rem;
+    background-color: #f8f9fa;
+}
+
+/* 加载动画容器 */
+.loading-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+}
+
+/* 表单组样式 */
+.form-group {
+    margin-bottom: 1rem;
+}
+
+/* 按钮组样式 */
+.btn-group-custom {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .btn-group-custom {
+        flex-direction: column;
+    }
+} 
