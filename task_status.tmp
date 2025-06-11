@@ -1,0 +1,12 @@
+{
+  "running_tasks": [
+    "crawl_sources"
+  ],
+  "last_update": "2025-06-12T01:47:48.619258",
+  "task_details": {
+    "crawl_sources": {
+      "message": "开始执行定时新闻源抓取任务",
+      "start_time": "2025-06-12T01:47:48.619205"
+    }
+  }
+}

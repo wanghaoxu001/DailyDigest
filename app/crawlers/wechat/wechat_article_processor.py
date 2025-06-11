@@ -6,9 +6,9 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional, Callable, Type
 
 # 导入爬虫和解析器模块
-from playwright_wechat_crawler import WechatArticleCrawler
-from parsers import BaseArticleParser
-from parsers.security_digest_parser import SecurityDigestParser
+from .playwright_wechat_crawler import WechatArticleCrawler
+from ..parsers import BaseArticleParser
+from ..parsers.security_digest_parser import SecurityDigestParser
 
 
 class ArticleParserRegistry:

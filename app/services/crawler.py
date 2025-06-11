@@ -25,9 +25,9 @@ from app.models.news import News
 from app.services.llm_processor import process_news
 
 # 导入微信文章爬虫和处理器
-from playwright_wechat_crawler import WechatArticleCrawler  # type: ignore
-from parsers.security_digest_parser import SecurityDigestParser  # type: ignore
-from wechat_article_processor import ArticleParserRegistry, process_url as process_wechat_url_external  # type: ignore
+from app.crawlers.wechat.playwright_wechat_crawler import WechatArticleCrawler
+from app.crawlers.parsers.security_digest_parser import SecurityDigestParser
+from app.crawlers.wechat.wechat_article_processor import ArticleParserRegistry, process_url as process_wechat_url_external
 
 # 获取日志记录器
 from app.config import get_logger

@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from typing import Dict, List, Any, Tuple
 
-from parsers import BaseArticleParser
+from . import BaseArticleParser
 
 
 class SecurityDigestParser(BaseArticleParser):
