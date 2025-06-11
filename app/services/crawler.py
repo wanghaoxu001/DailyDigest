@@ -177,7 +177,7 @@ async def _get_content_with_newspaper4k(
                 and isinstance(fallback_feed_entry.content, list)
                 and fallback_feed_entry.content[0].get("value")
             ):
-                entry_content_html = fallback_feed_entry.content[0].value
+                entry_content_html = fallback_feed_entry.content[0].get("value", "")
             elif (
                 hasattr(fallback_feed_entry, "summary") and fallback_feed_entry.summary
             ):  # Use summary if content not available
@@ -227,7 +227,7 @@ async def _get_content_with_newspaper4k(
                 and isinstance(fallback_feed_entry.content, list)
                 and fallback_feed_entry.content[0].get("value")
             ):
-                entry_content_html = fallback_feed_entry.content[0].value
+                entry_content_html = fallback_feed_entry.content[0].get("value", "")
             elif (
                 hasattr(fallback_feed_entry, "summary") and fallback_feed_entry.summary
             ):
@@ -489,15 +489,35 @@ async def get_wechat_article_data(
             f"WeChat Article Fetch: Specific parser yielded {len(custom_parsed_items)} items for {wechat_url}"
         )
 
-        crawl_time_str = custom_parsed_output.get("crawl_time")
+        # 优先级1: RSS条目的发布时间（最高优先级）
         pub_date = datetime.now()
-        if crawl_time_str:
+        if original_rss_entry and hasattr(original_rss_entry, "published_parsed") and original_rss_entry.published_parsed:
             try:
-                pub_date = datetime.fromisoformat(crawl_time_str)
-            except ValueError:
-                logger.warning(
-                    f"WeChat Article Fetch: Cannot parse crawl_time '{crawl_time_str}', using current time."
-                )
+                pub_date = datetime.fromtimestamp(time.mktime(original_rss_entry.published_parsed))
+                logger.info(f"WeChat Article Fetch: Using RSS published time: {pub_date}")
+            except (TypeError, ValueError, OverflowError) as e_date:
+                logger.warning(f"WeChat Article Fetch: RSS date parsing failed for {wechat_url}: {str(e_date)}")
+                # 优先级2: 特定解析器的crawl_time
+                crawl_time_str = custom_parsed_output.get("crawl_time")
+                if crawl_time_str:
+                    try:
+                        pub_date = datetime.fromisoformat(crawl_time_str)
+                        logger.info(f"WeChat Article Fetch: Using parser crawl_time: {pub_date}")
+                    except ValueError:
+                        logger.warning(
+                            f"WeChat Article Fetch: Cannot parse crawl_time '{crawl_time_str}', using current time."
+                        )
+        else:
+            # 优先级2: 特定解析器的crawl_time
+            crawl_time_str = custom_parsed_output.get("crawl_time")
+            if crawl_time_str:
+                try:
+                    pub_date = datetime.fromisoformat(crawl_time_str)
+                    logger.info(f"WeChat Article Fetch: Using parser crawl_time: {pub_date}")
+                except ValueError:
+                    logger.warning(
+                        f"WeChat Article Fetch: Cannot parse crawl_time '{crawl_time_str}', using current time."
+                    )
 
         for item in custom_parsed_items:
             item_title = item.get("title", "无标题")
@@ -589,8 +609,8 @@ def fetch_rss_feed(source: Source, db: Session):
     retry_delay = 5
     total_new_articles_from_source = 0
     
-    # 获取时间限制，默认7天
-    max_fetch_days = getattr(source, 'max_fetch_days', 7)
+    # 获取时间限制，默认3天
+    max_fetch_days = getattr(source, 'max_fetch_days', 3)
     cutoff_date = datetime.now() - timedelta(days=max_fetch_days)
     logger.info(f"时间限制: 只抓取 {cutoff_date.strftime('%Y-%m-%d %H:%M:%S')} 之后的文章")
 
@@ -629,6 +649,23 @@ def fetch_rss_feed(source: Source, db: Session):
                         f"RSS: 跳过条目 (缺少链接或标题): {getattr(entry, 'link', 'N/A')}"
                     )
                     continue
+
+                # EARLY TIME FILTER: 在抓取内容之前检查RSS条目的发布时间
+                entry_publish_date = None
+                if hasattr(entry, "published_parsed") and entry.published_parsed:
+                    try:
+                        entry_publish_date = datetime.fromtimestamp(time.mktime(entry.published_parsed))
+                        # 如果有时区信息，移除以便比较
+                        if entry_publish_date.tzinfo is not None:
+                            entry_publish_date = entry_publish_date.replace(tzinfo=None)
+                        
+                        if entry_publish_date < cutoff_date:
+                            logger.info(
+                                f"RSS: 跳过过期条目 (RSS发布于 {entry_publish_date}, 截止日期 {cutoff_date}): {entry.title[:30]}..."
+                            )
+                            continue
+                    except (TypeError, ValueError, OverflowError) as e_time:
+                        logger.warning(f"RSS: 无法解析RSS条目时间，继续处理: {str(e_time)}")
 
                 # PRE-FETCH CHECK: Check if this original URL from RSS feed already exists
                 # This check is crucial to avoid re-fetching/re-processing already stored articles
@@ -673,8 +710,9 @@ def fetch_rss_feed(source: Source, db: Session):
 
                 newly_added_to_db_this_entry = 0
                 for article_data in articles_data_list:
-                    # 检查文章发布时间是否在允许范围内
-                    if article_data.get("publish_date"):
+                    # 注意：时间过滤已经在RSS条目级别进行，这里不再重复检查
+                    # 但对于微信文章的多个子文章，仍需要进行时间检查（因为子文章可能有不同的时间）
+                    if article_data.get("entities", {}).get("wechat_article") and article_data.get("publish_date"):
                         article_date = article_data["publish_date"]
                         if isinstance(article_date, str):
                             try:
@@ -694,7 +732,7 @@ def fetch_rss_feed(source: Source, db: Session):
                             
                             if article_date < cutoff_date:
                                 logger.info(
-                                    f"RSS: 跳过过期文章 (发布于 {article_date}, 截止日期 {cutoff_date}): {article_data['title'][:30]}..."
+                                    f"RSS: 跳过过期微信子文章 (发布于 {article_date}, 截止日期 {cutoff_date}): {article_data['title'][:30]}..."
                                 )
                                 continue
                     

@@ -9,6 +9,10 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 # 加载环境变量
 load_dotenv()
 
+# 解决 Hugging Face tokenizers 并行冲突问题
+# 在导入任何可能使用tokenizers的库之前设置此环境变量
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 # 导入数据库更新函数
 from app.db.update_schema import update_sources_table, run_migrations
 

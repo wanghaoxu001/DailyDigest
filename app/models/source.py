@@ -26,7 +26,7 @@ class Source(Base):
     use_newspaper = Column(
         Boolean, default=True
     )  # 是否使用Newspaper4k获取文章内容，默认为True
-    max_fetch_days = Column(Integer, default=7)  # 最多拉取最近X天的文章，默认7天
+    max_fetch_days = Column(Integer, default=3)  # 最多拉取最近X天的文章，默认7天
     use_description_as_summary = Column(Boolean, default=False)  # 当没有高质量摘要时，使用description作为备选摘要
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=func.now())

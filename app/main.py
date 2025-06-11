@@ -44,6 +44,14 @@ async def lifespan(app: FastAPI):
     
     # 关闭时执行
     logger.info("应用正在关闭")
+    
+    # 停止调度器服务
+    try:
+        from app.services.scheduler import scheduler_service
+        scheduler_service.stop()
+        logger.info("调度器服务已停止")
+    except Exception as e:
+        logger.error(f"停止调度器服务时出错: {e}")
 
 
 # 创建应用

@@ -35,14 +35,14 @@
 ### 数据模型更新
 ```python
 # app/models/source.py
-max_fetch_days = Column(Integer, default=7)  # 最多拉取最近X天的文章，默认7天
+max_fetch_days = Column(Integer, default=3)  # 最多拉取最近X天的文章，默认3天
 ```
 
 ### API 更新
 ```python
 # app/api/endpoints/sources.py
 class SourceBase(BaseModel):
-    max_fetch_days: int = 7  # 最多拉取最近X天的文章，默认7天
+    max_fetch_days: int = 3  # 最多拉取最近X天的文章，默认3天
 ```
 
 ### 前端界面更新
@@ -61,8 +61,8 @@ class SourceBase(BaseModel):
 ### 爬虫逻辑更新
 ```python
 # app/services/crawler.py
-# 获取时间限制，默认7天
-max_fetch_days = getattr(source, 'max_fetch_days', 7)
+# 获取时间限制，默认3天
+max_fetch_days = getattr(source, 'max_fetch_days', 3)
 cutoff_date = datetime.now() - timedelta(days=max_fetch_days)
 
 # 检查文章发布时间是否在允许范围内

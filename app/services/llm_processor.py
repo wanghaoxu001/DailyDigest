@@ -772,7 +772,7 @@ def process_news(news_item: News, db: Session = None):
                 tokens_usage_stats["article_summary"] = summary_tokens
             article_summary = article_summary_result
             generated_summary = (
-                article_summary[:300] if len(article_summary) > 300 else article_summary
+                article_summary[:600] if len(article_summary) > 600 else article_summary
             )
             summary_source = "generated"  # 标记为生成的总结
             logger.info(f"总结生成完成，长度: {len(article_summary)} 字符")

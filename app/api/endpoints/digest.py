@@ -4,12 +4,14 @@ from typing import List, Optional, Dict
 from pydantic import BaseModel
 from datetime import datetime, date
 import os
+import markdown
 
 from app.db.session import get_db
 from app.models.digest import Digest
 from app.models.news import News, NewsCategory
 from app.services.digest_generator import create_digest_content, generate_pdf
 from app.api.endpoints.news import news_to_dict
+from app.config.paths import get_pdf_absolute_path
 
 router = APIRouter()
 
@@ -47,6 +49,11 @@ class DigestNewsResponse(BaseModel):
 
 class DigestDetailResponse(DigestResponse):
     news_items: List[DigestNewsResponse] = []
+
+class DigestPreviewRequest(BaseModel):
+    content: str
+    title: str
+    date: str
 
 # 辅助函数 - 将ORM模型转换为字典
 def digest_to_dict(digest: Digest) -> dict:
@@ -202,7 +209,7 @@ def generate_digest_pdf(digest_id: int, db: Session = Depends(get_db)):
     if pdf_path is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="PDF生成服务不可用，请检查系统是否已安装WeasyPrint所需的依赖"
+            detail="PDF生成服务不可用，请检查系统是否已安装Playwright所需的依赖"
         )
     
     # 更新快报记录的PDF路径
@@ -230,8 +237,11 @@ def download_digest_pdf(digest_id: int, db: Session = Depends(get_db)):
             detail="PDF文件不存在，请先生成PDF"
         )
     
+    # 使用统一的路径管理获取绝对路径
+    pdf_absolute_path = get_pdf_absolute_path(digest.pdf_path)
+    
     # 检查文件是否存在
-    if not os.path.exists(digest.pdf_path):
+    if not pdf_absolute_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="PDF文件不存在或已被删除"
@@ -239,7 +249,7 @@ def download_digest_pdf(digest_id: int, db: Session = Depends(get_db)):
     
     # 返回文件作为响应
     try:
-        with open(digest.pdf_path, "rb") as file:
+        with open(pdf_absolute_path, "rb") as file:
             content = file.read()
         
         return Response(
@@ -254,3 +264,65 @@ def download_digest_pdf(digest_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"读取PDF文件失败: {str(e)}"
         )
+
+@router.get("/{digest_id}/preview")
+def preview_digest(digest_id: int, db: Session = Depends(get_db)):
+    """实时预览快报"""
+    digest = db.query(Digest).filter(Digest.id == digest_id).first()
+    
+    if not digest:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="快报不存在"
+        )
+    
+    # 将快报内容转换为HTML格式
+    md = markdown.Markdown(
+        extensions=[
+            'markdown.extensions.extra',
+            'markdown.extensions.codehilite',
+            'markdown.extensions.toc',
+            'markdown.extensions.tables',
+            'markdown.extensions.nl2br'
+        ],
+        extension_configs={
+            'codehilite': {
+                'css_class': 'highlight'
+            }
+        }
+    )
+    
+    html_content = md.convert(digest.content or '')
+    
+    return {
+        "title": digest.title,
+        "date": digest.date.isoformat() if digest.date else None,
+        "content": html_content
+    }
+
+@router.post("/preview")
+def preview_digest_content(preview_request: DigestPreviewRequest):
+    """预览Markdown内容（不保存）"""
+    # 将Markdown内容转换为HTML
+    md = markdown.Markdown(
+        extensions=[
+            'markdown.extensions.extra',
+            'markdown.extensions.codehilite',
+            'markdown.extensions.toc',
+            'markdown.extensions.tables',
+            'markdown.extensions.nl2br'
+        ],
+        extension_configs={
+            'codehilite': {
+                'css_class': 'highlight'
+            }
+        }
+    )
+    
+    html_content = md.convert(preview_request.content or '')
+    
+    return {
+        "title": preview_request.title,
+        "date": preview_request.date,
+        "content": html_content
+    }

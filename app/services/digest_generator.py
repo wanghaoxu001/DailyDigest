@@ -8,31 +8,28 @@ from app.models.news import NewsCategory
 from app.config import get_logger
 logger = get_logger(__name__)
 
-# 尝试导入WeasyPrint，如果失败则提供替代方案
+# 导入Playwright PDF生成器
 try:
-    from weasyprint import HTML
-    WEASYPRINT_AVAILABLE = True
-    logger.info("WeasyPrint已成功加载")
+    from app.services.playwright_pdf_generator import generate_pdf as generate_pdf_playwright
+    PLAYWRIGHT_AVAILABLE = True
+    logger.info("Playwright PDF生成器已成功加载")
 except (ImportError, OSError) as e:
-    WEASYPRINT_AVAILABLE = False
-    logger.warning(f"WeasyPrint加载失败: {str(e)}")
-    logger.warning("PDF生成功能将不可用。请按照以下链接安装必要的依赖：")
-    logger.warning("https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#installation")
-    logger.warning("Windows平台需要安装GTK+3: https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases")
+    PLAYWRIGHT_AVAILABLE = False
+    logger.warning(f"Playwright PDF生成器加载失败: {str(e)}")
+    logger.warning("PDF生成功能将不可用。请安装playwright: pip install playwright && playwright install chromium")
 
 # 加载模板引擎
 template_env = Environment(loader=FileSystemLoader("app/templates"))
 
-def get_category_name(category):
-    """获取分类的中文名称"""
+def get_category_name(category, index):
+    """获取分类的中文名称（带序号）"""
     category_names = {
-        NewsCategory.FINANCIAL: "金融业网络安全事件",
-        NewsCategory.MAJOR: "重大网络安全事件",
-        NewsCategory.DATA_LEAK: "重大数据泄露事件",
-        NewsCategory.VULNERABILITY: "重大漏洞风险提示",
-        NewsCategory.OTHER: "其他"
+        NewsCategory.FINANCIAL: "一、金融业网络安全事件",
+        NewsCategory.MAJOR: "二、重大网络安全事件", 
+        NewsCategory.DATA_LEAK: "三、重大数据泄露事件",
+        NewsCategory.VULNERABILITY: "四、重大漏洞风险提示"
     }
-    return category_names.get(category, "其他")
+    return category_names.get(category, f"{index}、其他")
 
 def create_digest_content(news_items):
     """创建快报内容（Markdown格式）"""
@@ -54,27 +51,44 @@ def create_digest_content(news_items):
         NewsCategory.FINANCIAL,
         NewsCategory.MAJOR,
         NewsCategory.DATA_LEAK,
-        NewsCategory.VULNERABILITY,
-        NewsCategory.OTHER
+        NewsCategory.VULNERABILITY
     ]
     
     for category in category_order:
-        if category not in categorized_news:
-            continue
-            
-        news_in_category = categorized_news[category]
-        if not news_in_category:
-            continue
-            
-        category_name = get_category_name(category)
+        category_name = get_category_name(category, category_order.index(category) + 1)
         md_content += f"### {category_name}\n\n"
         
-        for i, news in enumerate(news_in_category, 1):
+        # 检查是否有该分类的新闻
+        if category in categorized_news and categorized_news[category]:
+            news_in_category = categorized_news[category]
+            
+            for i, news in enumerate(news_in_category, 1):
+                title = news.generated_title or news.title
+                summary = news.generated_summary or news.summary
+                
+                md_content += f"{i}. **{title}**\n"
+                md_content += f"    - {summary}\n"
+                if i < len(news_in_category):  # 不是最后一条新闻时添加空行
+                    md_content += "\n"
+        else:
+            # 没有该分类的新闻时显示"暂无"
+            md_content += "> 暂无\n"
+        
+        md_content += "\n------\n\n"
+    
+    # 处理"其他"分类（如果有的话）
+    if NewsCategory.OTHER in categorized_news and categorized_news[NewsCategory.OTHER]:
+        md_content += f"### 五、其他\n\n"
+        
+        other_news = categorized_news[NewsCategory.OTHER]
+        for i, news in enumerate(other_news, 1):
             title = news.generated_title or news.title
             summary = news.generated_summary or news.summary
             
             md_content += f"{i}. **{title}**\n"
-            md_content += f"   - {summary}\n"
+            md_content += f"    - {summary}\n"
+            if i < len(other_news):  # 不是最后一条新闻时添加空行
+                md_content += "\n"
         
         md_content += "\n------\n\n"
     
@@ -82,42 +96,22 @@ def create_digest_content(news_items):
 
 def generate_pdf(digest):
     """生成PDF文件"""
-    # 如果WeasyPrint不可用，返回None并记录警告
-    if not WEASYPRINT_AVAILABLE:
-        logger.warning("无法生成PDF：WeasyPrint不可用")
+    # 如果Playwright不可用，返回None并记录警告
+    if not PLAYWRIGHT_AVAILABLE:
+        logger.warning("无法生成PDF：Playwright不可用")
         return None
     
-    # 创建存储PDF的目录
-    pdf_dir = "app/static/pdf"
-    os.makedirs(pdf_dir, exist_ok=True)
-    
-    # 设置文件名
-    file_name = f"digest_{digest.date.strftime('%Y%m%d')}_{digest.id}.pdf"
-    pdf_path = os.path.join(pdf_dir, file_name)
-    
     try:
-        # 渲染HTML模板
-        template = template_env.get_template("pdf_template.html")
+        # 使用Playwright生成PDF
+        pdf_path = generate_pdf_playwright(digest)
         
-        # 将content转为HTML（使用markdown库）
-        import markdown
-        html_content = markdown.markdown(digest.content)
-        
-        # 渲染模板
-        html = template.render(
-            title=digest.title,
-            date=digest.date.strftime('%Y-%m-%d'),
-            content=html_content
-        )
-        
-        # 生成PDF
-        HTML(string=html).write_pdf(pdf_path)
-        
-        # 返回相对路径（用于存储和访问）
-        rel_path = os.path.join("static", "pdf", file_name)
-        logger.info(f"PDF已生成: {rel_path}")
-        
-        return rel_path
+        if pdf_path:
+            logger.info(f"PDF已生成: {pdf_path}")
+            return pdf_path
+        else:
+            logger.error("PDF生成失败")
+            return None
+            
     except Exception as e:
         logger.error(f"生成PDF失败: {str(e)}")
         return None

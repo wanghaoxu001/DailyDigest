@@ -28,7 +28,7 @@ class SourceBase(BaseModel):
     xpath_config: Optional[str] = None
     use_rss_summary: bool = True  # 是否参考RSS原始摘要，默认为True
     use_newspaper: bool = True  # 是否使用Newspaper4k获取文章内容，默认为True
-    max_fetch_days: int = 7  # 最多拉取最近X天的文章，默认7天
+    max_fetch_days: int = 3  # 最多拉取最近X天的文章，默认3天
     use_description_as_summary: bool = False  # 当没有高质量摘要时，使用description作为备选摘要
     description: Optional[str] = None
 
@@ -335,3 +335,198 @@ def reset_source_tokens(source_id: int, db: Session = Depends(get_db)):
 
     # 手动转换为字典
     return source_to_dict(db_source)
+
+
+@router.get("/scheduler/status")
+def get_scheduler_status():
+    """获取定时任务调度器状态"""
+    try:
+        from app.services.scheduler import scheduler_service
+        status = scheduler_service.get_status()
+        return status
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"获取调度器状态失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取调度器状态失败: {str(e)}",
+        )
+
+
+@router.get("/scheduler/history")
+def get_scheduler_history(limit: int = 20, task_type: Optional[str] = None):
+    """获取定时任务执行历史"""
+    try:
+        from app.services.scheduler import scheduler_service
+        history = scheduler_service.get_execution_history(limit=limit, task_type=task_type)
+        return {"history": history}
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"获取执行历史失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取执行历史失败: {str(e)}",
+        )
+
+
+@router.get("/scheduler/task-details/{timestamp}")
+def get_task_details(timestamp: str):
+    """获取特定任务的详细信息"""
+    try:
+        from app.services.scheduler import scheduler_service
+        details = scheduler_service.get_task_details(timestamp)
+        if details is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="未找到指定的任务记录",
+            )
+        return {"task_details": details}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"获取任务详情失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取任务详情失败: {str(e)}",
+        )
+
+
+@router.get("/scheduler/errors")
+def get_scheduler_errors(limit: int = 10):
+    """获取定时任务错误历史"""
+    try:
+        from app.services.scheduler import scheduler_service
+        errors = scheduler_service.get_error_history(limit=limit)
+        return {"errors": errors}
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"获取错误历史失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取错误历史失败: {str(e)}",
+        )
+
+
+@router.get("/scheduler/statistics")
+def get_scheduler_statistics():
+    """获取定时任务统计信息"""
+    try:
+        from app.services.scheduler import scheduler_service
+        stats = scheduler_service.get_statistics()
+        return stats
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"获取统计信息失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取统计信息失败: {str(e)}",
+        )
+
+
+@router.post("/scheduler/crawl-now")
+def trigger_crawl_now():
+    """立即触发新闻源抓取任务"""
+    try:
+        from app.services.scheduler import scheduler_service
+        result = scheduler_service.run_crawl_sources_now()
+        
+        if result["status"] == "skipped":
+            return {"detail": result["message"], "status": "skipped"}, 409  # Conflict
+        else:
+            return {"detail": result["message"], "status": "started"}, 202  # Accepted
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"手动触发抓取失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"手动触发抓取失败: {str(e)}",
+        )
+
+
+class EventGroupsRequest(BaseModel):
+    use_multiprocess: bool = True
+
+
+@router.post("/scheduler/event-groups-now")
+def trigger_event_groups_now(request: EventGroupsRequest = EventGroupsRequest()):
+    """立即触发事件分组生成任务"""
+    try:
+        from app.services.scheduler import scheduler_service
+        result = scheduler_service.run_event_generation_now(use_multiprocess=request.use_multiprocess)
+        
+        method = "多进程" if request.use_multiprocess else "单进程"
+        
+        if result["status"] == "skipped":
+            return {"detail": f"{result['message']} ({method})", "status": "skipped"}, 409  # Conflict
+        else:
+            return {"detail": f"{result['message']} ({method})", "status": "started"}, 202  # Accepted
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"手动触发事件分组生成失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"手动触发事件分组生成失败: {str(e)}",
+        )
+
+
+class SchedulerSettings(BaseModel):
+    crawl_sources_interval: float = Field(ge=0.25, le=24)  # 0.25小时到24小时
+    event_generation_interval: Optional[int] = Field(ge=1, le=24, default=None)  # 1小时到24小时
+
+
+@router.put("/scheduler/settings", status_code=status.HTTP_200_OK)
+def update_scheduler_settings(settings: SchedulerSettings):
+    """更新定时任务设置"""
+    try:
+        from app.services.scheduler import scheduler_service
+        
+        # 更新新闻源抓取间隔
+        scheduler_service.set_crawl_sources_interval(settings.crawl_sources_interval)
+        
+        # 更新事件生成间隔（如果提供）
+        if settings.event_generation_interval is not None:
+            scheduler_service.set_event_generation_interval(settings.event_generation_interval)
+        
+        return {
+            "detail": f"已更新定时任务设置",
+            "crawl_sources_interval": settings.crawl_sources_interval,
+            "event_generation_interval": settings.event_generation_interval
+        }
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"更新调度器设置失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"更新调度器设置失败: {str(e)}",
+        )
+
+
+@router.post("/scheduler/clear-task/{task_type}")
+def clear_stuck_task(task_type: str):
+    """清理卡住的任务状态"""
+    try:
+        from app.services.scheduler import scheduler_service
+        result = scheduler_service.clear_stuck_task(task_type)
+        
+        if result["status"] == "not_found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=result["message"],
+            )
+        
+        return {"detail": result["message"], "status": result["status"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"清理任务失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"清理任务失败: {str(e)}",
+        )

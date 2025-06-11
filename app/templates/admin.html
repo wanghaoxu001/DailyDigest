@@ -85,6 +85,11 @@
         </button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link" id="scheduler-tab" data-bs-toggle="tab" data-bs-target="#scheduler" type="button" role="tab">
+            定时任务
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
         <button class="nav-link" id="system-tab" data-bs-toggle="tab" data-bs-target="#system" type="button" role="tab">
             系统设置
         </button>
@@ -188,6 +193,197 @@
                             <!-- 分页控件将动态生成 -->
                         </ul>
                     </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 定时任务管理 -->
+    <div class="tab-pane fade" id="scheduler" role="tabpanel">
+        <h3>定时任务管理</h3>
+
+        <!-- 任务状态概览 -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card bg-primary">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h5 class="card-title text-white">调度器状态</h5>
+                                <div class="card-text text-white" id="schedulerStatus">检查中...</div>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="bi bi-cpu fs-1 text-white"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-success">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h5 class="card-title">24h执行次数</h5>
+                                <p class="card-text" id="executionCount">0</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="bi bi-clock-history fs-1"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-warning">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h5 class="card-title">24h错误次数</h5>
+                                <p class="card-text" id="errorCount">0</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="bi bi-exclamation-triangle fs-1"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-info">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h5 class="card-title">活跃任务数</h5>
+                                <p class="card-text" id="activeJobs">0</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="bi bi-list-task fs-1"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 任务控制面板 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">任务控制</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>手动触发任务</h6>
+                        <button class="btn btn-warning me-2 mb-2" id="btnManualCrawl">
+                            <i class="bi bi-cloud-download"></i> 立即抓取新闻源
+                        </button>
+                        <div class="btn-group mb-2" role="group">
+                            <button class="btn btn-info" id="btnManualEventGroups">
+                                <i class="bi bi-diagram-3"></i> 立即计算相似度和分组
+                            </button>
+                            <button type="button" class="btn btn-outline-info dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown">
+                                <span class="visually-hidden">配置选项</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <div class="dropdown-item-text">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="useMultiprocessSimilarity" checked>
+                                            <label class="form-check-label" for="useMultiprocessSimilarity">
+                                                使用多进程计算（推荐）
+                                            </label>
+                                        </div>
+                                        <small class="text-muted">多进程计算可大幅提升相似度计算性能</small>
+                                    </div>
+                                </li>
+                                <li>
+                                    <hr class="dropdown-divider">
+                                </li>
+                                <li><a class="dropdown-item" href="#" onclick="showSimilarityHelp()"><i class="bi bi-question-circle"></i> 性能说明</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>定时设置</h6>
+                        <form id="schedulerSettingsForm">
+                            <div class="mb-2">
+                                <label for="crawlInterval" class="form-label">新闻源抓取间隔（小时）</label>
+                                <input type="number" class="form-control" id="crawlInterval" min="0.25" max="24" step="0.25" value="1">
+                            </div>
+                            <div class="mb-2">
+                                <label for="eventInterval" class="form-label">相似度计算和分组间隔（小时）</label>
+                                <input type="number" class="form-control" id="eventInterval" min="1" max="24" step="1" value="1">
+                                <small class="text-muted">计算文章相似度并生成事件分组，优化后大幅提升前端响应速度</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary">更新设置</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 执行历史 -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">执行历史</h5>
+                <div>
+                    <select class="form-select form-select-sm me-2" id="historyTaskFilter" style="width: auto; display: inline-block;">
+                        <option value="">所有任务</option>
+                        <option value="crawl_sources">新闻源抓取</option>
+                        <option value="event_groups">相似度和分组</option>
+                        <option value="cache_cleanup">缓存清理</option>
+                        <option value="config">配置更新</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-primary" id="btnRefreshHistory">
+                        <i class="bi bi-arrow-repeat"></i> 刷新
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped" id="historyTable">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>任务类型</th>
+                                <th>状态</th>
+                                <th>消息</th>
+                                <th>执行时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody">
+                            <!-- 历史记录将动态加载 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 错误记录 -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">错误记录</h5>
+                <button class="btn btn-sm btn-outline-primary" id="btnRefreshErrors">
+                    <i class="bi bi-arrow-repeat"></i> 刷新
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped" id="errorsTable">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>任务类型</th>
+                                <th>错误消息</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="errorsTableBody">
+                            <!-- 错误记录将动态加载 -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -443,6 +639,48 @@
         document.getElementById('selectAllNews').addEventListener('change', toggleSelectAllNews);
         document.getElementById('btnBatchProcess').addEventListener('click', batchProcessNews);
         document.getElementById('btnBatchDelete').addEventListener('click', batchDeleteNews);
+
+        // ========== 定时任务相关事件绑定 ==========
+
+        // 手动触发任务按钮
+        document.getElementById('btnManualCrawl').addEventListener('click', triggerManualCrawl);
+        document.getElementById('btnManualEventGroups').addEventListener('click', triggerManualEventGroups);
+
+        // 定时设置表单提交
+        document.getElementById('schedulerSettingsForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            updateSchedulerSettings();
+        });
+
+        // 历史记录刷新和过滤
+        document.getElementById('btnRefreshHistory').addEventListener('click', () => loadSchedulerStatus());
+        document.getElementById('historyTaskFilter').addEventListener('change', filterHistory);
+
+        // 错误记录刷新
+        document.getElementById('btnRefreshErrors').addEventListener('click', () => loadSchedulerStatus());
+
+        // 监听标签页切换，当切换到定时任务页面时加载数据
+        document.getElementById('scheduler-tab').addEventListener('shown.bs.tab', function() {
+            loadSchedulerStatus();
+
+            // 设置定时刷新（每30秒）
+            if (window.schedulerRefreshInterval) {
+                clearInterval(window.schedulerRefreshInterval);
+            }
+            window.schedulerRefreshInterval = setInterval(loadSchedulerStatus, 30000);
+        });
+
+        // 当离开定时任务页面时清除定时刷新
+        document.querySelectorAll('#adminTabs button[data-bs-toggle="tab"]').forEach(tab => {
+            if (tab.id !== 'scheduler-tab') {
+                tab.addEventListener('shown.bs.tab', function() {
+                    if (window.schedulerRefreshInterval) {
+                        clearInterval(window.schedulerRefreshInterval);
+                        window.schedulerRefreshInterval = null;
+                    }
+                });
+            }
+        });
     });
 
     let currentNewsId = null;
@@ -1190,5 +1428,589 @@
             alert(`批量删除失败: ${error.response?.data?.detail || error.message}`);
         });
     }
+
+    // ========== 定时任务管理功能 ==========
+    
+    // 定时任务状态数据
+    let schedulerData = {
+        status: null,
+        statistics: null,
+        history: [],
+        errors: []
+    };
+
+    // 加载定时任务状态
+    function loadSchedulerStatus() {
+        Promise.all([
+            axios.get('/api/sources/scheduler/status'),
+            axios.get('/api/sources/scheduler/statistics'),
+            axios.get('/api/sources/scheduler/history?limit=20'),
+            axios.get('/api/sources/scheduler/errors?limit=10')
+        ])
+        .then(responses => {
+            schedulerData.status = responses[0].data;
+            schedulerData.statistics = responses[1].data;
+            schedulerData.history = responses[2].data.history;
+            schedulerData.errors = responses[3].data.errors;
+            
+            updateSchedulerDisplay();
+        })
+        .catch(error => {
+            console.error('加载定时任务状态失败:', error);
+            showSchedulerError('加载定时任务状态失败');
+        });
+    }
+
+    // 更新定时任务显示
+    function updateSchedulerDisplay() {
+        updateStatusCards();
+        updateSchedulerSettingsForm();
+        updateHistoryTable();
+        updateErrorsTable();
+    }
+
+            // 更新状态卡片
+        function updateStatusCards() {
+            const status = schedulerData.status;
+            const stats = schedulerData.statistics;
+            
+            // 更新调度器状态
+            const statusEl = document.getElementById('schedulerStatus');
+            if (status.is_running) {
+                let statusText = '<i class="bi bi-check-circle"></i> 运行中';
+                
+                // 如果有正在执行的任务，显示当前任务信息和进度
+                if (status.current_tasks && Object.keys(status.current_tasks).length > 0) {
+                    const currentTasks = Object.entries(status.current_tasks);
+                    const taskInfo = currentTasks.map(([taskType, taskData]) => {
+                        let taskStr = `${getTaskTypeLabel(taskType)}: ${taskData.message || '执行中'}`;
+                        
+                                        // 如果有进度信息，添加进度条
+                if (taskData.progress && (taskData.progress.percentage !== undefined || (taskData.progress.current && taskData.progress.total))) {
+                    const percentage = taskData.progress.percentage || 0;
+                    const current = taskData.progress.current || 0;
+                    const total = taskData.progress.total || 0;
+                    
+                    taskStr += `<br><div class="progress mt-1" style="height: 15px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" 
+                             style="width: ${percentage}%" aria-valuenow="${percentage}" aria-valuemin="0" aria-valuemax="100">
+                            ${percentage.toFixed(1)}%
+                        </div>
+                    </div>`;
+                    
+                    if (current && total) {
+                        taskStr += `<small class="text-light">${current}/${total}</small>`;
+                    }
+                }
+                        
+                        return taskStr;
+                    }).join('<br><br>');
+                    statusText += `<br><div class="mt-2"><small class="text-muted">当前任务:</small><br>${taskInfo}</div>`;
+                }
+                
+                statusEl.innerHTML = statusText;
+                statusEl.className = 'card-text text-white';
+            } else {
+                statusEl.innerHTML = '<i class="bi bi-x-circle"></i> 已停止';
+                statusEl.className = 'card-text text-white';
+            }
+            
+            // 更新统计数据
+            document.getElementById('executionCount').textContent = stats.total_executions_24h || 0;
+            document.getElementById('errorCount').textContent = stats.total_errors_24h || 0;
+            document.getElementById('activeJobs').textContent = status.scheduled_jobs_count || 0;
+            
+            // 更新当前任务数量
+            const currentTasksCount = status.current_tasks ? Object.keys(status.current_tasks).length : 0;
+            if (currentTasksCount > 0) {
+                document.getElementById('activeJobs').innerHTML = `${status.scheduled_jobs_count || 0} <small class="text-info">(${currentTasksCount} 运行中)</small>`;
+            }
+        }
+
+    // 更新定时设置表单显示
+    function updateSchedulerSettingsForm() {
+        const status = schedulerData.status;
+        document.getElementById('crawlInterval').value = status.crawl_sources_interval || 1;
+        document.getElementById('eventInterval').value = status.event_generation_interval || 1;
+    }
+
+    // 更新历史记录表
+    function updateHistoryTable() {
+        const tbody = document.getElementById('historyTableBody');
+        tbody.innerHTML = '';
+        
+        schedulerData.history.forEach(record => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${formatDateTime(record.timestamp)}</td>
+                <td>${getTaskTypeLabel(record.task_type)}</td>
+                <td>${getStatusBadge(record.status)}</td>
+                <td class="text-truncate" style="max-width: 300px;" title="${record.message}">${record.message}</td>
+                <td>${record.details?.execution_time ? (record.details.execution_time).toFixed(2) + 's' : '-'}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-info" onclick="showTaskDetails('${record.timestamp}')">
+                        <i class="bi bi-eye"></i> 详情
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+    
+    // 显示任务详情
+    function showTaskDetails(timestamp) {
+        // 显示加载状态
+        const modal = new bootstrap.Modal(document.getElementById('taskDetailsModal'));
+        document.getElementById('taskDetailsBody').innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p class="mt-2">加载中...</p></div>';
+        modal.show();
+        
+        // 获取任务详情
+        axios.get(`/api/sources/scheduler/task-details/${encodeURIComponent(timestamp)}`)
+            .then(response => {
+                const details = response.data.task_details;
+                displayTaskDetails(details);
+            })
+            .catch(error => {
+                console.error('获取任务详情失败:', error);
+                document.getElementById('taskDetailsBody').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle"></i> 
+                        获取任务详情失败: ${error.response?.data?.detail || error.message}
+                    </div>
+                `;
+            });
+    }
+    
+    // 显示任务详情内容
+    function displayTaskDetails(details) {
+        const body = document.getElementById('taskDetailsBody');
+        
+        let detailsHtml = `
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>基本信息</h6>
+                    <table class="table table-sm">
+                        <tr><th width="30%">执行时间:</th><td>${formatDateTime(details.timestamp)}</td></tr>
+                        <tr><th>任务类型:</th><td>${getTaskTypeLabel(details.task_type)}</td></tr>
+                        <tr><th>状态:</th><td>${getStatusBadge(details.status)}</td></tr>
+                        <tr><th>耗时:</th><td>${details.details?.execution_time ? (details.details.execution_time).toFixed(2) + '秒' : '未知'}</td></tr>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <h6>执行信息</h6>
+                    <p class="border p-2 bg-light rounded" style="word-break: break-word;">${details.message}</p>
+                </div>
+            </div>
+        `;
+        
+        // 根据任务类型显示特定详情
+        if (details.details && Object.keys(details.details).length > 0) {
+            detailsHtml += '<hr><h6>详细信息</h6>';
+            
+            if (details.task_type === 'event_groups') {
+                detailsHtml += renderEventGroupsDetails(details.details);
+            } else if (details.task_type === 'crawl_sources') {
+                detailsHtml += renderCrawlSourcesDetails(details.details);
+            } else if (details.task_type === 'cache_cleanup') {
+                detailsHtml += renderCacheCleanupDetails(details.details);
+            } else {
+                detailsHtml += renderGenericDetails(details.details);
+            }
+        }
+        
+        body.innerHTML = detailsHtml;
+    }
+    
+    // 渲染事件分组任务详情
+    function renderEventGroupsDetails(details) {
+        let html = '<div class="row">';
+        
+        if (details.stage_details) {
+            const stages = details.stage_details;
+            html += `
+                <div class="col-md-12">
+                    <h6>执行阶段详情</h6>
+                    <div class="accordion" id="stageAccordion">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#similarity">
+                                    相似度计算
+                                </button>
+                            </h2>
+                            <div id="similarity" class="accordion-collapse collapse show" data-bs-parent="#stageAccordion">
+                                <div class="accordion-body">
+                                    <p>新增相似度记录: <strong>${stages.similarity_computation?.new_similarities || 0}</strong> 条</p>
+                                    <p>总处理新闻: <strong>${stages.similarity_computation?.total_news || 0}</strong> 条</p>
+                                    <p>执行时间: <strong>${stages.similarity_computation?.execution_time ? stages.similarity_computation.execution_time.toFixed(2) + '秒' : '未知'}</strong></p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#grouping">
+                                    事件分组计算
+                                </button>
+                            </h2>
+                            <div id="grouping" class="accordion-collapse collapse" data-bs-parent="#stageAccordion">
+                                <div class="accordion-body">
+                                    <p>创建分组数量: <strong>${stages.group_computation?.groups_created || 0}</strong> 个</p>
+                                    <p>处理新闻: <strong>${stages.group_computation?.total_news || 0}</strong> 条</p>
+                                    <p>执行时间: <strong>${stages.group_computation?.execution_time ? stages.group_computation.execution_time.toFixed(2) + '秒' : '未知'}</strong></p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#cache">
+                                    缓存生成
+                                </button>
+                            </h2>
+                            <div id="cache" class="accordion-collapse collapse" data-bs-parent="#stageAccordion">
+                                <div class="accordion-body">
+                                    <p>生成缓存分组: <strong>${stages.cache_generation || 0}</strong> 个</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#cleanup">
+                                    清理记录
+                                </button>
+                            </h2>
+                            <div id="cleanup" class="accordion-collapse collapse" data-bs-parent="#stageAccordion">
+                                <div class="accordion-body">
+                                    <p>清理记录数: <strong>${stages.cleanup || 0}</strong> 条</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (details.error_details) {
+            html += `
+                <div class="col-md-12 mt-3">
+                    <h6 class="text-danger">错误详情</h6>
+                    <div class="alert alert-danger">
+                        <pre style="white-space: pre-wrap; margin: 0;">${details.error_details}</pre>
+                    </div>
+                </div>
+            `;
+        }
+        
+        html += '</div>';
+        return html;
+    }
+    
+    // 渲染新闻源抓取任务详情
+    function renderCrawlSourcesDetails(details) {
+        return `
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>抓取统计</h6>
+                    <table class="table table-sm">
+                        <tr><th>总源数:</th><td>${details.total_sources || 0}</td></tr>
+                        <tr><th>处理源数:</th><td>${details.processed_sources || 0}</td></tr>
+                        <tr><th>成功抓取:</th><td class="text-success">${details.successful_crawls || 0}</td></tr>
+                        <tr><th>跳过源数:</th><td class="text-secondary">${details.skipped_sources || 0}</td></tr>
+                    </table>
+                </div>
+                ${details.error_details ? `
+                <div class="col-md-6">
+                    <h6 class="text-danger">错误详情</h6>
+                    <div class="alert alert-danger">
+                        <pre style="white-space: pre-wrap; margin: 0;">${details.error_details}</pre>
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+        `;
+    }
+    
+    // 渲染缓存清理任务详情
+    function renderCacheCleanupDetails(details) {
+        return `
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>清理统计</h6>
+                    <table class="table table-sm">
+                        <tr><th>删除记录数:</th><td>${details.deleted_count || 0}</td></tr>
+                        <tr><th>截止时间:</th><td>${details.cutoff_time ? formatDateTime(details.cutoff_time) : '未知'}</td></tr>
+                    </table>
+                </div>
+                ${details.error_details ? `
+                <div class="col-md-6">
+                    <h6 class="text-danger">错误详情</h6>
+                    <div class="alert alert-danger">
+                        <pre style="white-space: pre-wrap; margin: 0;">${details.error_details}</pre>
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+        `;
+    }
+    
+    // 渲染通用详情
+    function renderGenericDetails(details) {
+        return `
+            <div class="col-md-12">
+                <pre class="bg-light p-3 rounded" style="white-space: pre-wrap;">${JSON.stringify(details, null, 2)}</pre>
+            </div>
+        `;
+    }
+
+    // 更新错误记录表
+    function updateErrorsTable() {
+        const tbody = document.getElementById('errorsTableBody');
+        tbody.innerHTML = '';
+        
+        schedulerData.errors.forEach(error => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${formatDateTime(error.timestamp)}</td>
+                <td>${getTaskTypeLabel(error.task_type)}</td>
+                <td class="text-truncate" style="max-width: 400px;" title="${error.message}">${error.message}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-info" onclick="showTaskDetails('${error.timestamp}')">
+                        <i class="bi bi-eye"></i> 详情
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+
+
+    // 手动触发新闻源抓取
+    function triggerManualCrawl() {
+        const btn = document.getElementById('btnManualCrawl');
+        const originalText = btn.innerHTML;
+        
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 执行中...';
+        
+        axios.post('/api/sources/scheduler/crawl-now')
+            .then(response => {
+                showSchedulerSuccess('已手动触发新闻源抓取任务');
+                setTimeout(() => loadSchedulerStatus(), 1000); // 1秒后刷新状态
+            })
+            .catch(error => {
+                showSchedulerError('手动触发抓取失败: ' + (error.response?.data?.detail || error.message));
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+    }
+
+    // 手动触发事件分组生成
+    function triggerManualEventGroups() {
+        const btn = document.getElementById('btnManualEventGroups');
+        const originalText = btn.innerHTML;
+        const useMultiprocess = document.getElementById('useMultiprocessSimilarity').checked;
+        
+        btn.disabled = true;
+        if (useMultiprocess) {
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 多进程计算中...';
+        } else {
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 单进程计算中...';
+        }
+        
+        axios.post('/api/sources/scheduler/event-groups-now', {
+            use_multiprocess: useMultiprocess
+        })
+            .then(response => {
+                const method = useMultiprocess ? '多进程' : '单进程';
+                showSchedulerSuccess(`已手动触发事件分组生成任务（${method}计算）`);
+                setTimeout(() => loadSchedulerStatus(), 1000);
+            })
+            .catch(error => {
+                showSchedulerError('手动触发事件分组生成失败: ' + (error.response?.data?.detail || error.message));
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+    }
+
+    // 显示相似度计算性能说明
+    function showSimilarityHelp() {
+        const helpContent = `
+            <div class="alert alert-info">
+                <h6><i class="bi bi-info-circle"></i> 相似度计算性能对比</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>单进程模式</h6>
+                        <ul class="mb-0">
+                            <li>顺序计算，使用1个CPU核心</li>
+                            <li>内存占用较低</li>
+                            <li>计算时间较长</li>
+                            <li>适用于小规模数据</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>多进程模式（推荐）</h6>
+                        <ul class="mb-0">
+                            <li>并行计算，使用多个CPU核心</li>
+                            <li>内存占用稍高</li>
+                            <li>计算时间大幅缩短（3-8倍提升）</li>
+                            <li>适用于大规模数据</li>
+                        </ul>
+                    </div>
+                </div>
+                <hr>
+                <small class="text-muted">
+                    <strong>建议：</strong>对于超过100条新闻的计算，强烈建议使用多进程模式。
+                    系统会自动使用最多8个进程，每个进程处理100个新闻对的批次。
+                </small>
+            </div>
+        `;
+        
+        // 创建临时模态框显示帮助信息
+        const helpModal = document.createElement('div');
+        helpModal.className = 'modal fade';
+        helpModal.innerHTML = `
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">相似度计算性能说明</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">${helpContent}</div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(helpModal);
+        
+        const modal = new bootstrap.Modal(helpModal);
+        modal.show();
+        
+        // 模态框关闭后移除DOM元素
+        helpModal.addEventListener('hidden.bs.modal', () => {
+            document.body.removeChild(helpModal);
+        });
+    }
+
+    // 更新定时设置
+    function updateSchedulerSettings() {
+        const crawlInterval = parseFloat(document.getElementById('crawlInterval').value);
+        const eventInterval = parseInt(document.getElementById('eventInterval').value);
+        
+        if (isNaN(crawlInterval) || crawlInterval < 0.25 || crawlInterval > 24) {
+            showSchedulerError('新闻源抓取间隔必须在0.25-24小时之间');
+            return;
+        }
+        
+        if (isNaN(eventInterval) || eventInterval < 1 || eventInterval > 24) {
+            showSchedulerError('事件分组生成间隔必须在1-24小时之间');
+            return;
+        }
+        
+        const settings = {
+            crawl_sources_interval: crawlInterval,
+            event_generation_interval: eventInterval
+        };
+        
+        axios.put('/api/sources/scheduler/settings', settings)
+            .then(response => {
+                showSchedulerSuccess('定时任务设置已更新');
+                loadSchedulerStatus();
+            })
+            .catch(error => {
+                showSchedulerError('更新设置失败: ' + (error.response?.data?.detail || error.message));
+            });
+    }
+
+    // 过滤历史记录
+    function filterHistory() {
+        const taskType = document.getElementById('historyTaskFilter').value;
+        
+        axios.get(`/api/sources/scheduler/history?limit=50${taskType ? '&task_type=' + taskType : ''}`)
+            .then(response => {
+                schedulerData.history = response.data.history;
+                updateHistoryTable();
+            })
+            .catch(error => {
+                console.error('过滤历史记录失败:', error);
+                showSchedulerError('过滤历史记录失败');
+            });
+    }
+
+    // 辅助函数
+    function formatDateTime(timestamp) {
+        return new Date(timestamp).toLocaleString();
+    }
+
+    function getTaskTypeLabel(taskType) {
+        const labels = {
+            'crawl_sources': '新闻源抓取',
+            'event_groups': '事件分组生成',
+            'cache_cleanup': '缓存清理',
+            'config': '配置更新',
+            'scheduler': '调度器控制'
+        };
+        return labels[taskType] || taskType;
+    }
+
+    function getStatusBadge(status) {
+        const badges = {
+            'success': '<span class="badge bg-success">成功</span>',
+            'error': '<span class="badge bg-danger">错误</span>',
+            'warning': '<span class="badge bg-warning">警告</span>',
+            'running': '<span class="badge bg-info">运行中</span>'
+        };
+        return badges[status] || `<span class="badge bg-secondary">${status}</span>`;
+    }
+
+    function showSchedulerSuccess(message) {
+        // 简单的成功提示，实际项目中可以使用toast组件
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed';
+        alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(alertDiv);
+        setTimeout(() => alertDiv.remove(), 5000);
+    }
+
+    function showSchedulerError(message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+        alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(alertDiv);
+        setTimeout(() => alertDiv.remove(), 8000);
+    }
 </script>
+
+<!-- 任务详情模态框 -->
+<div class="modal fade" id="taskDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="taskDetailsModalTitle">任务详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="taskDetailsBody">
+                    <!-- 任务详情内容将动态加载 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}

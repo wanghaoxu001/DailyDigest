@@ -1,29 +1,112 @@
-{% extends "base.html" %}
-
-{% block title %}快报 - 每日安全快报系统{% endblock %}
-
-{% block extra_css %}
+{% extends "base.html" %} {% block title %}快报 - 每日安全快报系统{% endblock %} {% block extra_css %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simplemde@1.11.2/dist/simplemde.min.css">
+<link rel="stylesheet" href="{{ url_for('static', path='css/github-pdf.css') }}">
 <style>
     .digest-preview {
         border: 1px solid #dee2e6;
         border-radius: 0.25rem;
         padding: 1rem;
         background-color: #fff;
+        min-height: 500px;
+        overflow-y: auto;
+        font-family: "Open Sans", "Clear Sans", "Helvetica Neue", Helvetica, Arial, 'Segoe UI Emoji', sans-serif;
+        color: rgb(51, 51, 51);
+        line-height: 1.6;
     }
+    
     .digest-card {
         transition: all 0.3s;
     }
+    
     .digest-card:hover {
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
     }
+    
     .CodeMirror {
         height: 500px !important;
     }
+    
+    .editor-preview-section {
+        display: flex;
+        gap: 15px;
+        height: 600px;
+    }
+    
+    .editor-section,
+    .preview-section {
+        flex: 1;
+    }
+    
+    .preview-section {
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+        padding: 0;
+        background-color: #fff;
+    }
+    
+    .preview-header {
+        background-color: #f8f9fa;
+        padding: 10px 15px;
+        border-bottom: 1px solid #dee2e6;
+        font-weight: bold;
+    }
+    
+    .preview-content {
+        padding: 15px;
+        height: calc(100% - 50px);
+        overflow-y: auto;
+    }
+    /* GitHub样式预览 */
+    
+    .github-preview {
+        font-family: "Open Sans", "Clear Sans", "Helvetica Neue", Helvetica, Arial, 'Segoe UI Emoji', sans-serif;
+        color: rgb(51, 51, 51);
+        line-height: 1.6;
+    }
+    
+    .github-preview h1 {
+        font-size: 2.25em;
+        line-height: 1.2;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 0.3em;
+        text-align: center;
+        margin-bottom: 2rem;
+        font-weight: bold;
+    }
+    
+    .github-preview h3 {
+        font-size: 1.5em;
+        line-height: 1.43;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 0.3em;
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+        font-weight: bold;
+    }
+    
+    .github-preview hr {
+        height: 2px;
+        padding: 0;
+        margin: 16px 0;
+        background-color: #e7e7e7;
+        border: 0 none;
+        overflow: hidden;
+        box-sizing: content-box;
+    }
+    
+    .github-preview ol {
+        padding-left: 30px;
+    }
+    
+    .github-preview li {
+        margin-bottom: 0.5em;
+    }
+    
+    .github-preview strong {
+        font-weight: bold;
+    }
 </style>
-{% endblock %}
-
-{% block content %}
+{% endblock %} {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>快报管理</h2>
     <div>
@@ -55,7 +138,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- 历史快报 -->
     <div class="tab-pane fade" id="history" role="tabpanel">
         <div class="row" id="historyDigestContainer">
@@ -84,8 +167,19 @@
                         <input type="text" class="form-control" id="editDigestTitleInput" required>
                     </div>
                     <div class="mb-3">
-                        <label for="editDigestContent" class="form-label">内容</label>
-                        <textarea id="editDigestContent" class="form-control"></textarea>
+                        <label class="form-label">内容</label>
+                        <div class="editor-preview-section">
+                            <div class="editor-section">
+                                <div class="form-label">编辑器</div>
+                                <textarea id="editDigestContent" class="form-control"></textarea>
+                            </div>
+                            <div class="preview-section">
+                                <div class="preview-header">实时预览（GitHub样式）</div>
+                                <div class="preview-content github-preview" id="digestPreview">
+                                    <p class="text-muted">在左侧编辑器中输入内容，这里将显示实时预览...</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -116,45 +210,43 @@
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block extra_js %}
+{% endblock %} {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/simplemde@1.11.2/dist/simplemde.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
     let simplemde = null;
     let currentDigestId = null;
-    
+
     document.addEventListener('DOMContentLoaded', function() {
         // 加载最新快报
         loadLatestDigest();
-        
+
         // 加载历史快报
         document.getElementById('history-tab').addEventListener('click', function() {
             loadHistoryDigests();
         });
-        
+
         // 保存快报按钮事件
         document.getElementById('btnSaveDigest').addEventListener('click', saveDigest);
-        
+
         // 编辑快报按钮事件
         document.getElementById('btnEditDigest').addEventListener('click', function() {
             // 关闭查看模态框
             const viewModal = bootstrap.Modal.getInstance(document.getElementById('viewDigestModal'));
             viewModal.hide();
-            
+
             // 打开编辑模态框
             editDigest(currentDigestId);
         });
     });
-    
+
     // 加载最新快报
     function loadLatestDigest() {
         axios.get('/api/digest/latest')
             .then(response => {
                 const digest = response.data;
                 const container = document.getElementById('latestDigestContainer');
-                
+
                 if (!digest) {
                     container.innerHTML = `
                         <div class="alert alert-info">
@@ -164,7 +256,7 @@
                     `;
                     return;
                 }
-                
+
                 // 渲染快报预览
                 container.innerHTML = `
                     <div class="card">
@@ -200,14 +292,14 @@
                 `;
             });
     }
-    
+
     // 加载历史快报
     function loadHistoryDigests() {
         axios.get('/api/digest')
             .then(response => {
                 const digests = response.data;
                 const container = document.getElementById('historyDigestContainer');
-                
+
                 if (digests.length === 0) {
                     container.innerHTML = `
                         <div class="col-12">
@@ -218,10 +310,10 @@
                     `;
                     return;
                 }
-                
+
                 // 清空容器
                 container.innerHTML = '';
-                
+
                 // 渲染快报卡片
                 digests.forEach(digest => {
                     const card = document.createElement('div');
@@ -267,24 +359,24 @@
                 `;
             });
     }
-    
+
     // 查看快报详情
     function viewDigest(digestId) {
         currentDigestId = digestId;
-        
+
         axios.get(`/api/digest/${digestId}`)
             .then(response => {
                 const digest = response.data;
-                
+
                 // 设置标题
                 document.getElementById('viewDigestTitle').textContent = digest.title;
-                
+
                 // 渲染内容
                 document.getElementById('viewDigestContent').innerHTML = marked.parse(digest.content || '');
-                
+
                 // 设置PDF下载链接
                 document.getElementById('btnDownloadPdf').href = `/api/digest/${digestId}/pdf`;
-                
+
                 // 显示模态框
                 const modal = new bootstrap.Modal(document.getElementById('viewDigestModal'));
                 modal.show();
@@ -294,75 +386,133 @@
                 alert('加载快报详情失败');
             });
     }
-    
+
     // 编辑快报
     function editDigest(digestId) {
         currentDigestId = digestId;
-        
+
         axios.get(`/api/digest/${digestId}`)
             .then(response => {
                 const digest = response.data;
-                
+
+                // 调试信息
+                console.log('编辑快报 - API 响应:', digest);
+                console.log('快报内容长度:', digest.content ? digest.content.length : 0);
+                console.log('快报内容预览:', digest.content ? digest.content.substring(0, 100) : '无内容');
+
                 // 设置表单值
                 document.getElementById('editDigestId').value = digest.id;
                 document.getElementById('editDigestTitleInput').value = digest.title;
                 document.getElementById('editDigestContent').value = digest.content || '';
-                
+
                 // 初始化Markdown编辑器
                 if (simplemde) {
+                    console.log('设置SimpleMDE内容:', digest.content || '');
                     simplemde.value(digest.content || '');
+                    // 更新预览
+                    updatePreview();
                 } else {
                     simplemde = new SimpleMDE({
                         element: document.getElementById('editDigestContent'),
                         spellChecker: false,
                         autosave: {
                             enabled: true,
-                            uniqueId: 'digestEditor',
+                            uniqueId: `digestEditor_${digestId}`,
                             delay: 1000,
-                        }
+                        },
+                        // 配置工具栏
+                        toolbar: ["bold", "italic", "heading", "|", "unordered-list", "ordered-list", "|", "link", "table", "|", "preview", "side-by-side", "fullscreen", "|", "guide"]
                     });
+
+                    // 监听编辑器内容变化
+                    simplemde.codemirror.on('change', function() {
+                        updatePreview();
+                    });
+
+                    // 初始预览
+                    updatePreview();
                 }
-                
+
+                // 监听标题变化
+                document.getElementById('editDigestTitleInput').addEventListener('input', updatePreview);
+
                 // 显示模态框
                 const modal = new bootstrap.Modal(document.getElementById('editDigestModal'));
                 modal.show();
+
+                // 在模态框完全显示后刷新编辑器
+                document.getElementById('editDigestModal').addEventListener('shown.bs.modal', function() {
+                    if (simplemde && simplemde.codemirror) {
+                        // 延迟一下确保DOM完全渲染
+                        setTimeout(() => {
+                            simplemde.codemirror.refresh();
+                            simplemde.codemirror.focus();
+                        }, 100);
+                    }
+                }, {
+                    once: true
+                });
             })
             .catch(error => {
                 console.error('Error loading digest for editing:', error);
                 alert('加载快报编辑信息失败');
             });
     }
-    
+
+    // 更新实时预览
+    function updatePreview() {
+        const title = document.getElementById('editDigestTitleInput').value || '快报标题';
+        const content = simplemde ? simplemde.value() : '';
+        const date = new Date().toISOString().split('T')[0];
+
+        // 调用预览API
+        axios.post('/api/digest/preview', {
+                title: title,
+                content: content,
+                date: date
+            })
+            .then(response => {
+                const previewContainer = document.getElementById('digestPreview');
+                previewContainer.innerHTML = response.data.content || '<p class="text-muted">暂无内容</p>';
+            })
+            .catch(error => {
+                console.error('Error updating preview:', error);
+                // 如果API失败，使用客户端预览
+                const previewContainer = document.getElementById('digestPreview');
+                previewContainer.innerHTML = marked.parse(content || '') || '<p class="text-muted">暂无内容</p>';
+            });
+    }
+
     // 保存快报
     function saveDigest() {
         const digestId = document.getElementById('editDigestId').value;
         const title = document.getElementById('editDigestTitleInput').value;
         const content = simplemde.value();
-        
+
         if (!title) {
             alert('请输入快报标题');
             return;
         }
-        
+
         const digestData = {
             title: title,
             content: content
         };
-        
+
         axios.put(`/api/digest/${digestId}`, digestData)
             .then(() => {
                 // 关闭模态框
                 const modal = bootstrap.Modal.getInstance(document.getElementById('editDigestModal'));
                 modal.hide();
-                
+
                 // 重新加载快报
                 loadLatestDigest();
-                
+
                 // 如果历史标签页是激活的，也重新加载历史快报
                 if (document.getElementById('history-tab').classList.contains('active')) {
                     loadHistoryDigests();
                 }
-                
+
                 alert('快报保存成功');
             })
             .catch(error => {
@@ -370,7 +520,7 @@
                 alert('保存快报失败');
             });
     }
-    
+
     // 生成PDF
     function generatePdf(digestId) {
         axios.post(`/api/digest/${digestId}/generate-pdf`)
@@ -383,18 +533,18 @@
                 alert('生成PDF失败');
             });
     }
-    
+
     // 辅助函数 - 格式化日期
     function formatDate(dateStr) {
         if (!dateStr) return '';
         const date = new Date(dateStr);
         return date.toLocaleString();
     }
-    
+
     // 辅助函数 - 渲染新闻计数徽章
     function renderNewsCountBadges(counts) {
         if (!counts) return '';
-        
+
         const badges = [];
         const categoryLabels = {
             '金融业网络安全事件': '金融业',
@@ -403,7 +553,7 @@
             '重大漏洞风险提示': '漏洞风险',
             '其他': '其他'
         };
-        
+
         const categoryColors = {
             '金融业网络安全事件': 'info',
             '重大网络安全事件': 'danger',
@@ -411,14 +561,14 @@
             '重大漏洞风险提示': 'primary',
             '其他': 'secondary'
         };
-        
+
         for (const [category, count] of Object.entries(counts)) {
             const label = categoryLabels[category] || category;
             const color = categoryColors[category] || 'secondary';
             badges.push(`<span class="badge bg-${color} me-1">${label}: ${count}</span>`);
         }
-        
+
         return badges.join(' ');
     }
 </script>
-{% endblock %} 
+{% endblock %}
