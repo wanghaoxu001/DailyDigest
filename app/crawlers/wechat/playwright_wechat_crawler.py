@@ -45,7 +45,7 @@ class WechatArticleCrawler:
         self.user_agent = user_agent or random.choice(self.user_agents)
 
         # 输出目录
-        self.output_dir = "wechat_articles"
+        self.output_dir = "data/wechat_articles"
         os.makedirs(self.output_dir, exist_ok=True)
 
     async def crawl_article(self, url: str) -> Dict[str, Any]:
@@ -519,7 +519,7 @@ async def main():
     print(result["content"])
 
     print("=" * 50)
-    print("文章抓取结果已保存到 wechat_articles 目录")
+    print("文章抓取结果已保存到 data/wechat_articles 目录")
 
 
 # 运行异步主函数

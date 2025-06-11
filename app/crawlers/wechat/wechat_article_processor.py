@@ -51,7 +51,7 @@ parser_registry.register(r"^5th域安全微讯早报", SecurityDigestParser)
 class WechatArticleProcessor:
     """微信文章处理器"""
 
-    def __init__(self, output_dir: str = "processed_articles"):
+    def __init__(self, output_dir: str = "data/processed_articles"):
         """初始化处理器
 
         Args:
