@@ -22,7 +22,7 @@ services:
     environment:
       - PYTHONPATH=/app
       - FLASK_ENV=development
-    restart: unless-stopped
+    # restart: unless-stopped
     # 开发环境可以禁用健康检查以加快启动
     # healthcheck:
     #   test: ["CMD", "curl", "-f", "http://localhost:18899/health"]
