@@ -197,6 +197,28 @@ Docker 配置自动处理数据持久化：
 - **数据文件**: `./data` 目录映射到容器内
 - **环境配置**: `./.env` 文件映射到容器内
 
+### 4. 容器内调试
+
+使用 `python:3.9` 完整镜像，内置丰富的调试工具：
+
+```bash
+# 进入运行中的容器进行调试
+docker-compose exec daily-digest bash
+
+# 容器内可用的调试工具包括：
+# - vim/nano (文本编辑)
+# - htop/ps (进程监控)
+# - curl/wget (网络测试)
+# - netstat/lsof (网络和文件查看)
+# - sqlite3 (数据库客户端)
+# - jq (JSON处理)
+# - tree (目录结构)
+# 以及更多工具...
+
+# 查看详细的调试指南
+cat docs/DOCKER_DEBUG.md
+```
+
 ## ⚙️ 环境配置
 
 ### 环境变量说明
