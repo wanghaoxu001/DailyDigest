@@ -32,4 +32,7 @@ schedule>=1.2.0
 
 # 语义相似度计算
 sentence-transformers>=2.2.0
-torch>=1.11.0 
+torch>=1.11.0
+
+# 系统监控
+psutil>=5.9.0 
