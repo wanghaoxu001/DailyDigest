@@ -76,6 +76,18 @@ templates = Jinja2Templates(directory="app/templates")
 app.include_router(api_router)
 
 
+# 健康检查端点
+@app.get("/health")
+async def health_check():
+    """健康检查端点，用于容器和负载均衡器检查服务状态"""
+    from datetime import datetime
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "service": "Daily Digest System"
+    }
+
+
 # 前端首页路由
 @app.get("/")
 async def index(request: Request):

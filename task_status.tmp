@@ -1,12 +1,12 @@
 {
   "running_tasks": [
-    "crawl_sources"
+    "event_groups"
   ],
-  "last_update": "2025-06-12T01:47:48.619258",
+  "last_update": "2025-06-12T17:07:58.356635",
   "task_details": {
-    "crawl_sources": {
-      "message": "开始执行定时新闻源抓取任务",
-      "start_time": "2025-06-12T01:47:48.619205"
+    "event_groups": {
+      "message": "开始执行相似度计算和事件分组任务",
+      "start_time": "2025-06-12T17:07:58.356625"
     }
   }
 }

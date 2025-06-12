@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  daily-digest:
+    build: .
+    ports:
+      - "18899:18899"
+    volumes:
+      - ./data:/app/data
+      - ./daily_digest.db:/app/daily_digest.db
+      - ./.env:/app/.env
+    environment:
+      - PYTHONPATH=/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18899/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+  # 可选：添加 Redis 用于缓存
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+volumes:
+  redis_data: 
