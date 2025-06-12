@@ -39,3 +39,4 @@ torch>=1.11.0
 psutil>=5.9.0  # 系统资源监控和进程管理
 
 psycopg2
+markdown
