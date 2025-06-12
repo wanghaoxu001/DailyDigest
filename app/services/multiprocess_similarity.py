@@ -117,7 +117,7 @@ class MultiprocessSimilarityService:
         Args:
             max_workers: 最大工作进程数，默认为CPU核心数
         """
-        self.max_workers = max_workers or min(mp.cpu_count(), 8)  # 最多使用8个进程
+        self.max_workers = max_workers or min(mp.cpu_count(), 4)  # 最多使用8个进程
         self.batch_size = 100  # 每个批次处理的新闻对数量
         
         logger.info(f"初始化多进程相似度服务，使用 {self.max_workers} 个工作进程")

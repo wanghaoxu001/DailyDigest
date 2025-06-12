@@ -36,3 +36,5 @@ torch>=1.11.0
 
 # 系统监控
 psutil>=5.9.0 
+
+psycopg2
