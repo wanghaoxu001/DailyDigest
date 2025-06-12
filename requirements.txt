@@ -17,7 +17,7 @@ pydantic
 html2text
 aiofiles
 lingua-language-detector
-newspaper3k>=0.2.8
+newspaper4k
 lxml>=4.9.2
 lxml[html_clean]>=4.9.2
 
