@@ -19,6 +19,7 @@ aiofiles
 lingua-language-detector
 newspaper3k>=0.2.8
 lxml>=4.9.2
+lxml[html_clean]>=4.9.2
 
 # Selenium相关依赖
 selenium>=4.9.0
@@ -35,6 +36,6 @@ sentence-transformers>=2.2.0
 torch>=1.11.0
 
 # 系统监控
-psutil>=5.9.0 
+psutil>=5.9.0  # 系统资源监控和进程管理
 
 psycopg2

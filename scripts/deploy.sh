@@ -19,7 +19,13 @@ fi
 echo "📥 拉取最新代码..."
 git pull origin main
 
-# 2. 根据环境选择不同的部署方式
+# 2. 初始化开发环境（如果是开发环境）
+if [ "$ENVIRONMENT" = "dev" ]; then
+    echo "🔧 初始化开发环境..."
+    ./scripts/init-dev-env.sh
+fi
+
+# 3. 根据环境选择不同的部署方式
 if [ "$ENVIRONMENT" = "dev" ]; then
     echo "🔧 开发环境部署（代码挂载模式）..."
     
@@ -69,11 +75,11 @@ else
     exit 1
 fi
 
-# 3. 等待服务启动
+# 4. 等待服务启动
 echo "⏳ 等待服务启动..."
 sleep 10
 
-# 4. 检查服务状态
+# 5. 检查服务状态
 echo "🔍 检查服务状态..."
 if [ "$ENVIRONMENT" = "dev" ]; then
     docker compose -f docker-compose.dev.yml ps
@@ -81,7 +87,7 @@ else
     docker compose ps
 fi
 
-# 5. 检查健康状态
+# 6. 检查健康状态
 echo "🏥 检查服务健康状态..."
 for i in {1..10}; do
     if curl -f http://localhost:18899/health >/dev/null 2>&1; then
