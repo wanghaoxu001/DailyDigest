@@ -465,44 +465,58 @@ class NewsSimilarityStorageService:
             NewsEventGroup.latest_news_time >= time_threshold
         )
         
-        # 如果有过滤条件，需要通过新闻表进行筛选
+        # 获取符合条件的所有新闻（用于后续处理独立新闻）
+        news_query = db.query(News).filter(
+            News.created_at >= time_threshold,
+            News.is_processed == True
+        )
+        
+        if categories:
+            # 将字符串转换为枚举值
+            from app.models.news import NewsCategory
+            category_enums = []
+            for cat_str in categories:
+                for enum_item in NewsCategory:
+                    if enum_item.value == cat_str:
+                        category_enums.append(enum_item)
+                        break
+            
+            if category_enums:
+                news_query = news_query.filter(News.category.in_(category_enums))
+            else:
+                return []  # 没有找到匹配的分类，返回空结果
+        
+        if source_ids:
+            news_query = news_query.filter(News.source_id.in_(source_ids))
+        
+        if exclude_used:
+            news_query = news_query.filter(News.is_used_in_digest != True)
+        
+        all_qualifying_news = news_query.all()
+        
+        if not all_qualifying_news:
+            return []
+        
+        all_qualifying_news_ids = set(news.id for news in all_qualifying_news)
+        
+        # 如果有过滤条件，需要通过新闻表进行筛选分组
         if categories or source_ids or exclude_used:
-            # 获取符合条件的新闻ID
-            news_query = db.query(News.id).filter(
-                News.created_at >= time_threshold,
-                News.is_processed == True
-            )
-            
-            if categories:
-                news_query = news_query.filter(News.category.in_(categories))
-            
-            if source_ids:
-                news_query = news_query.filter(News.source_id.in_(source_ids))
-            
-            if exclude_used:
-                news_query = news_query.filter(News.is_used_in_digest != True)
-            
-            valid_news_ids = [row.id for row in news_query.all()]
-            
-            if not valid_news_ids:
-                return []
-            
             # 查找包含这些新闻的分组
             valid_group_ids = db.query(NewsGroupMembership.group_id).filter(
-                NewsGroupMembership.news_id.in_(valid_news_ids)
+                NewsGroupMembership.news_id.in_(all_qualifying_news_ids)
             ).distinct().all()
             
-            if not valid_group_ids:
-                return []
-            
-            group_ids = [row.group_id for row in valid_group_ids]
-            query = query.filter(NewsEventGroup.group_id.in_(group_ids))
+            if valid_group_ids:
+                group_ids = [row.group_id for row in valid_group_ids]
+                query = query.filter(NewsEventGroup.group_id.in_(group_ids))
         
         # 按更新时间排序
         groups = query.order_by(NewsEventGroup.updated_at.desc()).all()
         
         # 构建返回结果
         result_groups = []
+        grouped_news_ids = set()  # 记录已被分组的新闻ID
+        
         for group in groups:
             # 获取分组成员
             memberships = db.query(NewsGroupMembership).filter(
@@ -511,20 +525,32 @@ class NewsSimilarityStorageService:
             
             # 获取新闻详情
             news_ids = [m.news_id for m in memberships]
-            news_query = db.query(News).filter(News.id.in_(news_ids))
+            news_items_in_group = db.query(News).filter(News.id.in_(news_ids))
             
             # 应用过滤条件
             if categories:
-                news_query = news_query.filter(News.category.in_(categories))
+                # 将字符串转换为枚举值
+                category_enums = []
+                for cat_str in categories:
+                    for enum_item in NewsCategory:
+                        if enum_item.value == cat_str:
+                            category_enums.append(enum_item)
+                            break
+                if category_enums:
+                    news_items_in_group = news_items_in_group.filter(News.category.in_(category_enums))
             if source_ids:
-                news_query = news_query.filter(News.source_id.in_(source_ids))
+                news_items_in_group = news_items_in_group.filter(News.source_id.in_(source_ids))
             if exclude_used:
-                news_query = news_query.filter(News.is_used_in_digest != True)
+                news_items_in_group = news_items_in_group.filter(News.is_used_in_digest != True)
             
-            group_news = news_query.all()
+            group_news = news_items_in_group.all()
             
             if not group_news:
                 continue  # 过滤后没有新闻，跳过这个分组
+            
+            # 记录已被分组的新闻ID
+            for news in group_news:
+                grouped_news_ids.add(news.id)
             
             news_dict = {news.id: news for news in group_news}
             
@@ -564,10 +590,54 @@ class NewsSimilarityStorageService:
                 'sources': list(set(str(news.source_id) for news in group_news)),
                 'is_standalone': len(group_news) == 1,
                 'created_at': group.created_at,
-                'updated_at': group.updated_at
+                'updated_at': group.updated_at,
+                'news_items': group_news  # 添加 news_items 字段
             }
             
             result_groups.append(result_group)
+        
+        # 处理独立新闻（没有被分组的新闻）
+        standalone_news_ids = all_qualifying_news_ids - grouped_news_ids
+        standalone_count = len(standalone_news_ids)  # 记录独立新闻数量
+        
+        if standalone_news_ids:
+            standalone_news = [news for news in all_qualifying_news if news.id in standalone_news_ids]
+            
+            logger.info(f"找到 {len(standalone_news)} 条独立新闻需要单独显示")
+            
+            # 为每条独立新闻创建一个"分组"
+            for news in standalone_news:
+                # 提取实体信息，确保在任何情况下都能正常工作
+                try:
+                    entities = self.similarity_service.extract_key_entities(news)
+                    # 转换为可序列化的格式
+                    serializable_entities = {}
+                    for entity_type, values in entities.items():
+                        serializable_entities[entity_type] = list(values)
+                except Exception as e:
+                    logger.warning(f"提取新闻 {news.id} 实体时出错: {str(e)}")
+                    serializable_entities = {}
+                
+                standalone_group = {
+                    'id': f'standalone_{news.id}',
+                    'primary': news,
+                    'related': [],
+                    'entities': serializable_entities,
+                    'similarity_scores': {},
+                    'event_label': news.generated_title or news.title,
+                    'news_count': 1,
+                    'sources': [str(news.source_id)],
+                    'is_standalone': True,
+                    'created_at': news.created_at,
+                    'updated_at': news.created_at,
+                    'news_items': [news]  # 添加 news_items 字段
+                }
+                result_groups.append(standalone_group)
+        
+        # 按更新时间倒序排序（包括独立新闻），处理None值
+        result_groups.sort(key=lambda x: x['updated_at'] or x['created_at'], reverse=True)
+        
+        logger.info(f"返回 {len(result_groups)} 个分组，其中 {standalone_count} 个是独立新闻")
         
         return result_groups
     
@@ -612,6 +682,148 @@ class NewsSimilarityStorageService:
                    f"{deleted_memberships} 条成员关系, {deleted_groups} 个分组")
         
         return total_deleted
+
+    def filter_similar_to_used_news_precomputed(self, news_list: List[News], db: Session) -> List[News]:
+        """
+        基于预计算相似度数据过滤掉与已用于快报的新闻相似的文章
+        性能优化版本：只查询数据库，不进行实时相似度计算
+        """
+        if not news_list:
+            return []
+        
+        # 获取所有已用于快报的新闻ID
+        used_news_ids = db.query(News.id).filter(
+            News.is_used_in_digest == True,
+            News.is_processed == True
+        ).all()
+        
+        if not used_news_ids:
+            return news_list
+        
+        used_ids_set = {row.id for row in used_news_ids}
+        news_ids_list = [news.id for news in news_list]
+        
+        # 查询预计算的相似度关系
+        # 查找与已用新闻相似的新闻ID
+        similar_relationships = db.query(NewsSimilarity).filter(
+            NewsSimilarity.is_same_event == True,  # 只看同事件的相似关系
+            or_(
+                and_(
+                    NewsSimilarity.news_id_1.in_(news_ids_list),
+                    NewsSimilarity.news_id_2.in_(used_ids_set)
+                ),
+                and_(
+                    NewsSimilarity.news_id_1.in_(used_ids_set),
+                    NewsSimilarity.news_id_2.in_(news_ids_list)
+                )
+            )
+        ).all()
+        
+        # 收集需要过滤掉的新闻ID
+        filtered_out_ids = set()
+        today = datetime.now().date()
+        
+        for similarity in similar_relationships:
+            # 确定哪个是候选新闻，哪个是已用新闻
+            if similarity.news_id_1 in used_ids_set:
+                candidate_id = similarity.news_id_2
+                used_id = similarity.news_id_1
+            else:
+                candidate_id = similarity.news_id_1
+                used_id = similarity.news_id_2
+            
+            # 获取新闻日期进行同一天检查
+            candidate_news = next((news for news in news_list if news.id == candidate_id), None)
+            if candidate_news:
+                candidate_date = candidate_news.created_at.date()
+                
+                # 获取已用新闻的日期
+                used_news = db.query(News).filter(News.id == used_id).first()
+                if used_news:
+                    used_date = used_news.created_at.date()
+                    
+                    # 如果不是同一天，则过滤掉（同一天的新闻保留）
+                    if candidate_date != today or used_date != today:
+                        filtered_out_ids.add(candidate_id)
+        
+        # 返回未被过滤掉的新闻
+        filtered_news = [news for news in news_list if news.id not in filtered_out_ids]
+        
+        logger.info(f"基于预计算数据过滤新闻：原始 {len(news_list)} 条，过滤掉 {len(filtered_out_ids)} 条，剩余 {len(filtered_news)} 条")
+        
+        return filtered_news
+
+    def group_todays_news_with_history_similar_precomputed(self, news_list: List[News], db: Session) -> Dict[str, List[News]]:
+        """
+        基于预计算数据将今日文章分组：今日新文章 vs 与历史快报文章相似的文章
+        性能优化版本：只查询数据库，不进行实时相似度计算
+        """
+        if not news_list:
+            return {'fresh_news': [], 'similar_to_history': []}
+        
+        # 获取所有已用于快报的历史新闻（非当日）
+        today = datetime.now().date()
+        used_news = db.query(News).filter(
+            News.is_used_in_digest == True,
+            News.is_processed == True
+        ).all()
+        
+        # 过滤出非当日的历史快报文章
+        historical_used_news = [
+            news for news in used_news 
+            if news.created_at.date() != today
+        ]
+        
+        if not historical_used_news:
+            # 如果没有历史快报文章，所有文章都是新文章
+            return {'fresh_news': news_list, 'similar_to_history': []}
+        
+        historical_used_ids = {news.id for news in historical_used_news}
+        news_ids_list = [news.id for news in news_list]
+        
+        # 查询预计算的相似度关系
+        similar_relationships = db.query(NewsSimilarity).filter(
+            NewsSimilarity.is_same_event == True,  # 只看同事件的相似关系
+            or_(
+                and_(
+                    NewsSimilarity.news_id_1.in_(news_ids_list),
+                    NewsSimilarity.news_id_2.in_(historical_used_ids)
+                ),
+                and_(
+                    NewsSimilarity.news_id_1.in_(historical_used_ids),
+                    NewsSimilarity.news_id_2.in_(news_ids_list)
+                )
+            )
+        ).all()
+        
+        # 收集与历史相似的新闻ID
+        similar_to_history_ids = set()
+        
+        for similarity in similar_relationships:
+            # 确定哪个是当前新闻，哪个是历史新闻
+            if similarity.news_id_1 in historical_used_ids:
+                current_news_id = similarity.news_id_2
+            else:
+                current_news_id = similarity.news_id_1
+            
+            similar_to_history_ids.add(current_news_id)
+        
+        # 分离新闻
+        fresh_news = []
+        similar_to_history = []
+        
+        for news in news_list:
+            if news.id in similar_to_history_ids:
+                similar_to_history.append(news)
+            else:
+                fresh_news.append(news)
+        
+        logger.info(f"基于预计算数据分离新闻：新文章 {len(fresh_news)} 条，与历史相似 {len(similar_to_history)} 条")
+        
+        return {
+            'fresh_news': fresh_news,
+            'similar_to_history': similar_to_history
+        }
 
 
 # 全局实例

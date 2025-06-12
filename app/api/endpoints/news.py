@@ -233,8 +233,9 @@ def get_recent_news(
     # 获取所有符合条件的新闻（不先分页）
     all_items = query.all()
     
-    # 过滤掉与已用于快报的新闻相似的文章（同一天的除外）
-    filtered_items = similarity_service.filter_similar_to_used_news(all_items, db)
+    # 使用预计算数据过滤掉与已用于快报的新闻相似的文章（性能优化）
+    from app.services.news_similarity_storage import news_similarity_storage_service
+    filtered_items = news_similarity_storage_service.filter_similar_to_used_news_precomputed(all_items, db)
     
     # 重新计算总数
     total = len(filtered_items)
@@ -422,10 +423,12 @@ def get_recent_news_separated(
     # 获取所有符合条件的新闻
     all_items = query.all()
     
-    # 移除实时相似度计算，直接返回所有新闻作为"新文章"
-    # 实际的相似度分析已经在定时任务中预计算完成
-    fresh_news = all_items
-    similar_to_history = []  # 不再实时计算与历史的相似度
+    # 使用预计算数据分离新闻：今日新文章 vs 与历史快报相似的文章
+    from app.services.news_similarity_storage import news_similarity_storage_service
+    separation_result = news_similarity_storage_service.group_todays_news_with_history_similar_precomputed(all_items, db)
+    
+    fresh_news = separation_result['fresh_news']
+    similar_to_history = separation_result['similar_to_history']
     
     # 应用分页到新文章
     fresh_total = len(fresh_news)
