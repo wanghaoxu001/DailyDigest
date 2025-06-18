@@ -369,12 +369,12 @@ def get_scheduler_history(limit: int = 20, task_type: Optional[str] = None):
         )
 
 
-@router.get("/scheduler/task-details/{timestamp}")
-def get_task_details(timestamp: str):
+@router.get("/scheduler/task-details/{task_id}")
+def get_task_details(task_id: int):
     """获取特定任务的详细信息"""
     try:
         from app.services.scheduler import scheduler_service
-        details = scheduler_service.get_task_details(timestamp)
+        details = scheduler_service.get_task_details(task_id)
         if details is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

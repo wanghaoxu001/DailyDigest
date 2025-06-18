@@ -12,6 +12,9 @@ from app.models.news import News, NewsCategory
 from app.services.digest_generator import create_digest_content, generate_pdf
 from app.api.endpoints.news import news_to_dict
 from app.config.paths import get_pdf_absolute_path
+from app.config import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -182,6 +185,23 @@ def update_digest(digest_id: int, digest_update: DigestUpdate, db: Session = Dep
         )
     
     update_data = digest_update.dict(exclude_unset=True)
+    
+    # 如果更新了内容，则清除旧的PDF文件路径，确保重新生成PDF
+    if 'content' in update_data or 'title' in update_data:
+        # 删除旧的PDF文件
+        if digest.pdf_path:
+            try:
+                from app.config.paths import get_pdf_absolute_path
+                old_pdf_path = get_pdf_absolute_path(digest.pdf_path)
+                if old_pdf_path.exists():
+                    old_pdf_path.unlink()
+                    logger.info(f"已删除旧PDF文件: {old_pdf_path}")
+            except Exception as e:
+                logger.warning(f"删除旧PDF文件失败: {str(e)}")
+        
+        # 清除PDF路径，强制重新生成
+        digest.pdf_path = None
+        logger.info(f"快报 {digest_id} 内容已更新，PDF路径已清除")
     
     for key, value in update_data.items():
         setattr(digest, key, value)

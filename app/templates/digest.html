@@ -274,9 +274,9 @@
                                 <button class="btn btn-primary" onclick="editDigest(${digest.id})">
                                     <i class="bi bi-pencil"></i> 编辑
                                 </button>
-                                <a href="/api/digest/${digest.id}/pdf" class="btn btn-success" target="_blank">
+                                <button class="btn btn-success" onclick="downloadOrGeneratePdf(${digest.id})">
                                     <i class="bi bi-file-pdf"></i> 下载PDF
-                                </a>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -339,9 +339,9 @@
                                 <button class="btn btn-sm btn-outline-primary" onclick="editDigest(${digest.id})">
                                     <i class="bi bi-pencil"></i> 编辑
                                 </button>
-                                <a href="/api/digest/${digest.id}/pdf" class="btn btn-sm btn-outline-success" target="_blank">
+                                <button class="btn btn-sm btn-outline-success" onclick="downloadOrGeneratePdf(${digest.id})">
                                     <i class="bi bi-file-pdf"></i> PDF
-                                </a>
+                                </button>
                             </div>
                         </div>
                     `;
@@ -374,8 +374,12 @@
                 // 渲染内容
                 document.getElementById('viewDigestContent').innerHTML = marked.parse(digest.content || '');
 
-                // 设置PDF下载链接
-                document.getElementById('btnDownloadPdf').href = `/api/digest/${digestId}/pdf`;
+                // 设置PDF下载事件
+                const pdfBtn = document.getElementById('btnDownloadPdf');
+                pdfBtn.onclick = function(e) {
+                    e.preventDefault();
+                    downloadOrGeneratePdf(digestId);
+                };
 
                 // 显示模态框
                 const modal = new bootstrap.Modal(document.getElementById('viewDigestModal'));
@@ -521,16 +525,51 @@
             });
     }
 
+    // 智能PDF下载/生成函数
+    function downloadOrGeneratePdf(digestId) {
+        // 先尝试直接下载PDF
+        fetch(`/api/digest/${digestId}/pdf`, { method: 'GET' })
+            .then(response => {
+                if (response.ok) {
+                    // PDF存在，直接下载
+                    window.open(`/api/digest/${digestId}/pdf`, '_blank');
+                } else if (response.status === 404) {
+                    // PDF不存在，询问是否生成
+                    if (confirm('PDF文件不存在或已过期，是否重新生成？')) {
+                        generatePdf(digestId);
+                    }
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error checking PDF:', error);
+                // 出错时也询问是否生成
+                if (confirm('检查PDF状态失败，是否重新生成？')) {
+                    generatePdf(digestId);
+                }
+            });
+    }
+
     // 生成PDF
     function generatePdf(digestId) {
         axios.post(`/api/digest/${digestId}/generate-pdf`)
             .then(response => {
+                // 生成成功，直接下载
                 const pdfUrl = `/api/digest/${digestId}/pdf`;
                 window.open(pdfUrl, '_blank');
+                
+                console.log('PDF生成并下载成功');
             })
             .catch(error => {
                 console.error('Error generating PDF:', error);
-                alert('生成PDF失败');
+                
+                // 根据错误类型显示不同提示
+                if (error.response && error.response.status === 503) {
+                    alert('PDF生成服务暂不可用，请稍后重试');
+                } else {
+                    alert('生成PDF失败，请重试');
+                }
             });
     }
 

@@ -1,29 +1,99 @@
 {% extends "base.html" %} {% block title %}今日新闻 - 每日安全快报系统{% endblock %} {% block extra_css %}
 <style>
+    /* 现代化根变量定义 */
+    :root {
+        --primary-color: #2563eb;
+        --primary-hover: #1d4ed8;
+        --secondary-color: #64748b;
+        --success-color: #059669;
+        --warning-color: #d97706;
+        --danger-color: #dc2626;
+        --info-color: #0891b2;
+        --dark-color: #1e293b;
+        --light-color: #f8fafc;
+        
+        --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --gradient-success: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        --gradient-warning: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        --gradient-info: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        
+        --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+        
+        --radius-sm: 0.375rem;
+        --radius-md: 0.5rem;
+        --radius-lg: 0.75rem;
+        --radius-xl: 1rem;
+    }
+    
+    /* 现代化页面背景 */
+    body {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        min-height: 100vh;
+        font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    /* 现代化新闻卡片 */
     .news-card {
-        margin-bottom: 20px;
-        transition: all 0.3s;
+        margin-bottom: 1.5rem;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        border: none;
+        border-radius: var(--radius-xl);
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        box-shadow: var(--shadow-md);
+        overflow: hidden;
+        position: relative;
+    }
+    
+    .news-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: var(--gradient-primary);
+        opacity: 0;
+        transition: opacity 0.3s ease;
     }
     
     .news-card:hover {
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        transform: translateY(-8px) scale(1.02);
+        box-shadow: var(--shadow-xl);
+    }
+    
+    .news-card:hover::before {
+        opacity: 1;
     }
     
     .news-card.selected {
-        border: 2px solid #0d6efd;
-        box-shadow: 0 5px 15px rgba(13, 110, 253, 0.2);
+        border: 2px solid var(--primary-color);
+        box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1), var(--shadow-xl);
+        transform: translateY(-4px);
+    }
+    
+    .news-card.selected::before {
+        opacity: 1;
+        background: var(--gradient-success);
     }
     
     .category-badge {
         position: absolute;
-        top: 10px;
-        right: 10px;
+        top: 1rem;
+        right: 1rem;
+        z-index: 10;
     }
     
     .card-footer {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        background: rgba(248, 250, 252, 0.8);
+        backdrop-filter: blur(10px);
+        border-top: 1px solid rgba(226, 232, 240, 0.5);
     }
     /* Markdown样式 */
     
@@ -93,12 +163,626 @@
         background-color: #f6f8fa;
         border-radius: 3px;
     }
-    /* 分类筛选样式 */
+    /* 现代化筛选器样式 */
+    .filter-card {
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(15px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: var(--radius-xl);
+        box-shadow: var(--shadow-lg);
+        overflow: hidden;
+    }
     
-    .category-filter-container {
+    .filter-card .card-body {
+        padding: 2rem;
+    }
+    
+    .form-label {
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+        color: #374151;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .form-label.fw-bold {
+        font-weight: 700;
+        color: #1f2937;
+        font-size: 1rem;
+    }
+    
+    .badge {
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-radius: var(--radius-md);
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+        letter-spacing: 0.015em;
+    }
+    
+    .badge:hover {
+        opacity: 0.9;
+        box-shadow: var(--shadow-sm);
+    }
+    
+    .form-select, .form-control {
+        border: 2px solid rgba(226, 232, 240, 0.6);
+        border-radius: var(--radius-lg);
+        padding: 0.75rem 1rem;
+        font-size: 0.875rem;
+        transition: all 0.3s ease;
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(10px);
+    }
+    
+    .form-select:focus, .form-control:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+        background: rgba(255, 255, 255, 0.95);
+        transform: translateY(-1px);
+    }
+    
+    .form-check-input {
+        border-radius: var(--radius-sm);
+        border: 2px solid rgba(226, 232, 240, 0.8);
+        transition: all 0.3s ease;
+    }
+    
+    .form-check-input:checked {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+    }
+    
+    .form-switch .form-check-input {
+        border-radius: 2rem;
+    }
+    
+    /* 专业化按钮样式 */
+    .btn {
+        border-radius: var(--radius-md);
+        font-weight: 600;
+        letter-spacing: 0.015em;
+        transition: all 0.2s ease;
+        border: none;
+        padding: 0.75rem 1.5rem;
+    }
+    
+    .btn-primary {
+        background-color: var(--primary-color);
+        color: white;
+        box-shadow: var(--shadow-sm);
+    }
+    
+    .btn-primary:hover {
+        background-color: var(--primary-hover);
+        box-shadow: var(--shadow-md);
+    }
+    
+    .btn-success {
+        background-color: var(--success-color);
+        color: white;
+        box-shadow: var(--shadow-sm);
+    }
+    
+    .btn-success:hover {
+        background-color: #047857;
+        box-shadow: var(--shadow-md);
+    }
+    
+    .btn-outline-primary {
+        border: 2px solid var(--primary-color);
+        color: var(--primary-color);
+        background: transparent;
+    }
+    
+    .btn-outline-primary:hover {
+        background-color: var(--primary-color);
+        color: white;
+        box-shadow: var(--shadow-sm);
+    }
+    
+    .btn-outline-secondary {
+        border: 2px solid var(--secondary-color);
+        color: var(--secondary-color);
+        background: transparent;
+    }
+    
+    .btn-outline-secondary:hover {
+        background-color: var(--secondary-color);
+        color: white;
+        box-shadow: var(--shadow-sm);
+    }
+    
+    /* 现代化滚动进度指示器 */
+    .progress-indicator {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 1030;
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(20px);
+        border-bottom: 1px solid rgba(226, 232, 240, 0.5);
+        padding: 1rem 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        transform: translateY(-100%);
+        box-shadow: var(--shadow-lg);
+    }
+    
+    .progress-indicator.visible {
+        transform: translateY(0);
+    }
+    
+    .progress-bar-container {
+        flex: 1;
+        height: 8px;
+        background: rgba(226, 232, 240, 0.6);
+        border-radius: var(--radius-lg);
+        margin: 0 1.5rem;
+        overflow: hidden;
+        position: relative;
+    }
+    
+    .progress-bar {
+        height: 100%;
+        background: var(--gradient-info);
+        border-radius: var(--radius-lg);
+        transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        width: 0%;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .progress-bar::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+        animation: shimmer 2s infinite;
+    }
+    
+    @keyframes shimmer {
+        0% { left: -100%; }
+        100% { left: 100%; }
+    }
+    
+    .progress-text {
+        font-weight: 700;
+        color: #1f2937;
+        min-width: 140px;
+        text-align: center;
+        font-size: 0.875rem;
+        background: rgba(37, 99, 235, 0.1);
+        padding: 0.5rem 1rem;
+        border-radius: var(--radius-lg);
+    }
+    
+    .scroll-hint {
+        font-size: 0.8rem;
+        color: var(--secondary-color);
+        font-weight: 500;
+        min-width: 180px;
+        text-align: right;
+        opacity: 0.8;
+        transition: opacity 0.3s ease;
+    }
+    
+    /* 现代化卡片内容样式 */
+    .news-card .card-body {
+        padding: 2rem;
+        position: relative;
+    }
+    
+    .news-card .card-title {
+        font-size: 1.125rem;
+        font-weight: 700;
+        line-height: 1.4;
+        margin-bottom: 1rem;
+        color: #1f2937;
+    }
+    
+    .card-text {
+        color: var(--secondary-color);
+        line-height: 1.6;
+        font-size: 0.925rem;
+    }
+    
+    /* 现代化事件组样式 */
+    .event-group {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(15px);
+        border-radius: var(--radius-xl);
+        box-shadow: var(--shadow-lg);
+        margin-bottom: 2rem;
+        overflow: hidden;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    
+    .event-group:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-xl);
+    }
+    
+    .event-header {
+        background: rgba(37, 99, 235, 0.05);
+        padding: 1.5rem 2rem;
+        border-bottom: 1px solid rgba(226, 232, 240, 0.5);
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .event-header:hover {
+        background: rgba(37, 99, 235, 0.1);
+    }
+    
+    .event-label {
+        font-size: 1.125rem;
+        font-weight: 700;
+        color: #1f2937;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .event-entities {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+    
+    .entity-tag {
+        background-color: var(--info-color);
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: var(--radius-md);
+        font-size: 0.8rem;
+        font-weight: 500;
+        box-shadow: var(--shadow-sm);
+    }
+    
+    .event-meta {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        color: var(--secondary-color);
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+    
+    .event-meta span {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    
+    .toggle-icon {
+        transition: transform 0.3s ease;
+        font-size: 1.2rem;
+        color: var(--primary-color);
+    }
+    
+    .toggle-icon.rotated {
+        transform: rotate(180deg);
+    }
+    
+    .event-content {
+        padding: 2rem;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        max-height: 2000px;
+        overflow: hidden;
+    }
+    
+    .event-content.collapsed {
+        max-height: 0;
+        padding: 0 2rem;
+    }
+    
+    .primary-news {
+        background: rgba(34, 197, 94, 0.05);
+        border-left: 4px solid var(--success-color);
+        padding: 1.5rem;
+        border-radius: var(--radius-lg);
+        margin-bottom: 1.5rem;
+    }
+    
+    .related-news {
+        margin-top: 1.5rem;
+    }
+    
+    .related-news-item {
+        background: rgba(248, 250, 252, 0.8);
+        border-radius: var(--radius-lg);
+        padding: 1.25rem;
+        margin-bottom: 1rem;
+        border: 1px solid rgba(226, 232, 240, 0.5);
+        transition: all 0.3s ease;
+    }
+    
+    .related-news-item:hover {
+        background: rgba(255, 255, 255, 0.9);
+        transform: translateX(8px);
+        box-shadow: var(--shadow-md);
+    }
+    
+    /* 专业化底部操作栏 */
+    #bottomActionBar .card {
+        background: var(--primary-color);
+        border: none;
+        box-shadow: var(--shadow-lg);
+        color: white;
+    }
+    
+    #bottomActionBar .card-body {
+        padding: 2.5rem 2rem;
+    }
+    
+    #bottomActionBar h5 {
+        color: white;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    
+    #bottomActionBar .text-muted {
+        color: rgba(255, 255, 255, 0.9) !important;
+        font-size: 1rem;
+    }
+    
+    #bottomActionBar .btn-primary {
+        background-color: white;
+        color: var(--primary-color);
+        border: none;
+        font-weight: 700;
+        padding: 1rem 2rem;
+        font-size: 1.1rem;
+        box-shadow: var(--shadow-md);
+    }
+    
+    #bottomActionBar .btn-primary:hover {
+        background-color: #f8fafc;
+        box-shadow: var(--shadow-lg);
+    }
+    
+    #bottomActionBar .btn-outline-secondary {
+        border: 2px solid rgba(255, 255, 255, 0.8);
+        color: white;
+        background: transparent;
+        font-weight: 600;
+    }
+    
+    #bottomActionBar .btn-outline-secondary:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-color: white;
+    }
+    
+    /* 现代化加载动画 */
+    .spinner-border {
+        width: 3rem;
+        height: 3rem;
+        border-width: 0.3em;
+        animation: spinner-border 0.8s linear infinite;
+    }
+    
+    .loading-container {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(15px);
+        border-radius: var(--radius-xl);
+        padding: 4rem 2rem;
+        box-shadow: var(--shadow-lg);
+        margin: 2rem 0;
+    }
+    
+    /* 专业化分类徽章样式 */
+    .bg-info {
+        background-color: var(--info-color) !important;
+    }
+    
+    .bg-danger {
+        background-color: var(--danger-color) !important;
+    }
+    
+    .bg-warning {
+        background-color: var(--warning-color) !important;
+    }
+    
+    .bg-primary {
+        background-color: var(--primary-color) !important;
+    }
+    
+    .bg-secondary {
+        background-color: var(--secondary-color) !important;
+    }
+    
+    .bg-success {
+        background-color: var(--success-color) !important;
+    }
+    
+    /* 现代化警告框样式 */
+    .alert {
+        border: none;
+        border-radius: var(--radius-lg);
+        backdrop-filter: blur(10px);
+        box-shadow: var(--shadow-md);
+        border-left: 4px solid;
+    }
+    
+    .alert-warning {
+        background: rgba(251, 191, 36, 0.1);
+        color: var(--warning-color);
+        border-left-color: var(--warning-color);
+    }
+    
+    .alert-info {
+        background: rgba(14, 165, 233, 0.1);
+        color: var(--info-color);
+        border-left-color: var(--info-color);
+    }
+    
+    /* 现代化模态框样式 */
+    .modal-content {
+        border: none;
+        border-radius: var(--radius-xl);
+        box-shadow: var(--shadow-xl);
+        backdrop-filter: blur(20px);
+        background: rgba(255, 255, 255, 0.95);
+    }
+    
+    .modal-header {
+        background: rgba(37, 99, 235, 0.05);
+        border-bottom: 1px solid rgba(226, 232, 240, 0.5);
+        padding: 1.5rem 2rem;
+        border-top-left-radius: var(--radius-xl);
+        border-top-right-radius: var(--radius-xl);
+    }
+    
+    .modal-title {
+        color: #1f2937;
+        font-weight: 700;
+    }
+    
+    .modal-body {
+        padding: 2rem;
+    }
+    
+    .modal-footer {
+        background: rgba(248, 250, 252, 0.8);
+        border-top: 1px solid rgba(226, 232, 240, 0.5);
+        padding: 1.5rem 2rem;
+        border-bottom-left-radius: var(--radius-xl);
+        border-bottom-right-radius: var(--radius-xl);
+    }
+    
+    /* 响应式设计优化 */
+    @media (max-width: 768px) {
+        .news-card .card-body {
+            padding: 1.5rem;
+        }
+        
+        .filter-card .card-body {
+            padding: 1.5rem;
+        }
+        
+        .event-header {
+            padding: 1rem 1.5rem;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+        
+        .event-content {
+            padding: 1.5rem;
+        }
+        
+        .progress-indicator {
+            padding: 0.75rem 1rem;
+        }
+        
+        .progress-text {
+            min-width: 100px;
+            font-size: 0.8rem;
+        }
+        
+        .scroll-hint {
+            min-width: 120px;
+            font-size: 0.75rem;
+        }
+        
+        #bottomActionBar .card-body {
+            padding: 2rem 1.5rem;
+        }
+        
+        #bottomActionBar .d-flex {
+            flex-direction: column;
+            gap: 1rem;
+            text-align: center;
+        }
+        
+        .btn-lg {
+            width: 100%;
+            margin-bottom: 1rem;
+        }
+    }
+    
+    /* 暗黑模式支持（未来扩展） */
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --dark-color: #f8fafc;
+            --light-color: #1e293b;
+            --secondary-color: #94a3b8;
+        }
+    }
+    
+    /* 动画效果优化 */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .news-card {
+        animation: fadeInUp 0.6s ease-out;
+    }
+    
+    .event-group {
+        animation: fadeInUp 0.6s ease-out;
+    }
+    
+    /* 性能优化 */
+    * {
+        box-sizing: border-box;
+    }
+    
+    .news-card,
+    .event-group,
+    .btn,
+    .form-select,
+    .form-control {
+        will-change: transform;
+    }
+    
+    .news-card .card-text {
+        color: #6c757d;
+        line-height: 1.5;
+    }
+    
+    .news-card .card-footer {
         background-color: #f8f9fa;
-        border-radius: 8px;
-        padding: 15px;
+        border-top: 1px solid #dee2e6;
+        padding: 0.75rem 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    /* 给页面顶部留出空间避免被进度条遮挡 */
+    body {
+        padding-top: 0;
+        transition: padding-top 0.3s ease;
+    }
+    
+    body.progress-visible {
+        padding-top: 60px;
     }
     
     .form-check {
@@ -267,8 +951,22 @@
     }
 </style>
 {% endblock %} {% block content %}
+<!-- 滚动进度指示器 -->
+<div class="progress-indicator" id="progressIndicator">
+    <div class="progress-bar-container">
+        <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <div class="progress-text" id="progressText">
+        <span class="current-article">0</span> / <span class="total-articles">0</span> 篇文章
+    </div>
+    <div class="scroll-hint" id="scrollHint">向下滚动查看更多文章</div>
+</div>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>今日新闻</h2>
+    <div>
+        <h2>今日新闻</h2>
+        <p class="text-muted mb-0" id="newsStatsInfo">正在加载新闻统计信息...</p>
+    </div>
     <div>
         <button class="btn btn-outline-info btn-sm me-2" data-bs-toggle="tooltip" data-bs-placement="bottom" title="开启事件分组后，系统会自动将描述同一事件的新闻归类在一起，帮助您快速识别重复内容，节省阅读时间">
                 <i class="bi bi-info-circle"></i> 功能说明
@@ -281,80 +979,86 @@
 
 <div class="row mb-4">
     <div class="col-md-12">
-        <div class="card">
+        <div class="card filter-card">
             <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label class="form-label">分类筛选</label>
-                            <div class="category-filter-container">
-                                <div class="d-flex flex-wrap gap-2">
-                                    <div class="form-check">
-                                        <input class="form-check-input category-checkbox" type="checkbox" value="金融业网络安全事件" id="cat-financial" checked>
-                                        <label class="form-check-label" for="cat-financial">
-                                        <span class="badge bg-info">金融业</span>
-                                    </label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input class="form-check-input category-checkbox" type="checkbox" value="重大网络安全事件" id="cat-major" checked>
-                                        <label class="form-check-label" for="cat-major">
-                                        <span class="badge bg-danger">重大事件</span>
-                                    </label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input class="form-check-input category-checkbox" type="checkbox" value="重大数据泄露事件" id="cat-leak" checked>
-                                        <label class="form-check-label" for="cat-leak">
-                                        <span class="badge bg-warning">数据泄露</span>
-                                    </label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input class="form-check-input category-checkbox" type="checkbox" value="重大漏洞风险提示" id="cat-vuln" checked>
-                                        <label class="form-check-label" for="cat-vuln">
-                                        <span class="badge bg-primary">漏洞风险</span>
-                                    </label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input class="form-check-input category-checkbox" type="checkbox" value="其他" id="cat-other" checked>
-                                        <label class="form-check-label" for="cat-other">
-                                        <span class="badge bg-secondary">其他</span>
-                                    </label>
-                                    </div>
-                                </div>
-                                <div class="category-controls d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnSelectAllCategories">全选</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btnDeselectAllCategories">全不选</button>
-                                    </div>
-                                    <small class="text-muted">
-                                        已选择 <span id="selectedCategoriesCount">5</span>/5 个分类
-                                    </small>
-                                </div>
+                <!-- 第一行：分类筛选 -->
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <label class="form-label fw-bold">📊 分类筛选</label>
+                        <div class="d-flex flex-wrap gap-2 mb-2">
+                            <div class="form-check">
+                                <input class="form-check-input category-checkbox" type="checkbox" value="金融业网络安全事件" id="cat-financial" checked>
+                                <label class="form-check-label" for="cat-financial">
+                                    <span class="badge bg-info">金融业</span>
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input category-checkbox" type="checkbox" value="重大网络安全事件" id="cat-major" checked>
+                                <label class="form-check-label" for="cat-major">
+                                    <span class="badge bg-danger">重大事件</span>
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input category-checkbox" type="checkbox" value="重大数据泄露事件" id="cat-leak" checked>
+                                <label class="form-check-label" for="cat-leak">
+                                    <span class="badge bg-warning">数据泄露</span>
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input category-checkbox" type="checkbox" value="重大漏洞风险提示" id="cat-vuln" checked>
+                                <label class="form-check-label" for="cat-vuln">
+                                    <span class="badge bg-primary">漏洞风险</span>
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input category-checkbox" type="checkbox" value="其他" id="cat-other" checked>
+                                <label class="form-check-label" for="cat-other">
+                                    <span class="badge bg-secondary">其他</span>
+                                </label>
                             </div>
                         </div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="mb-3">
-                            <label for="sourceFilter" class="form-label">来源</label>
-                            <select class="form-select" id="sourceFilter">
-                                <option value="">所有来源</option>
-                                <!-- 来源选项将动态加载 -->
-                            </select>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="btnSelectAllCategories">全选</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnDeselectAllCategories">全不选</button>
+                            </div>
+                            <small class="text-muted">
+                                已选择 <span id="selectedCategoriesCount">5</span>/5 个分类
+                            </small>
                         </div>
                     </div>
-                    <div class="col-md-2">
-                        <div class="mb-3">
-                            <label for="timeRange" class="form-label">时间范围</label>
-                            <select class="form-select" id="timeRange">
-                                <option value="24">最近24小时</option>
-                                <option value="48">最近48小时</option>
-                                <option value="72">最近72小时</option>
-                                <option value="168">最近一周</option>
-                            </select>
-                        </div>
+                </div>
+
+                <hr class="my-3">
+
+                <!-- 第二行：其他筛选选项 -->
+                <div class="row">
+                    <div class="col-md-3">
+                        <label for="timeRange" class="form-label">⏰ 时间范围</label>
+                        <select class="form-select" id="timeRange">
+                            <option value="24">最近24小时</option>
+                            <option value="48">最近48小时</option>
+                            <option value="72">最近72小时</option>
+                            <option value="168">最近一周</option>
+                        </select>
                     </div>
-                    <div class="col-md-2">
-                        <div class="mb-3">
-                            <label class="form-label">显示选项</label>
+                    <div class="col-md-3">
+                        <label for="sourceFilter" class="form-label">📰 指定来源</label>
+                        <select class="form-select" id="sourceFilter">
+                            <option value="">所有来源</option>
+                            <!-- 来源选项将动态加载 -->
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="excludeSourceSelect" class="form-label">🚫 排除来源</label>
+                        <select class="form-select" id="excludeSourceSelect">
+                            <option value="">选择要排除的来源</option>
+                            <!-- 排除来源选项将动态加载 -->
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">🎛️ 显示选项</label>
+                        <div class="d-flex flex-column gap-1">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="excludeUsed" checked>
                                 <label class="form-check-label" for="excludeUsed">排除已用于快报</label>
@@ -370,6 +1074,24 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- 已排除来源显示区域 -->
+                <div class="row mt-3" id="excludedSourcesRow" style="display: none;">
+                    <div class="col-12">
+                        <div class="alert alert-warning py-2">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <i class="bi bi-funnel"></i>
+                                    <strong>已排除来源：</strong>
+                                    <span id="excludedSourcesList"></span>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-danger" id="btnClearExcludedSources">
+                                    <i class="bi bi-x-circle"></i> 清空
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -377,9 +1099,42 @@
 
 <div class="row" id="newsContainer">
     <!-- 新闻卡片将通过JavaScript动态加载 -->
-    <div class="col-12 text-center py-5">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
+    <div class="col-12">
+        <div class="loading-container text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <div class="mt-3">
+                <h5 class="text-muted">正在加载新闻...</h5>
+                <p class="text-secondary">请稍候，正在为您获取最新资讯</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 底部生成快报按钮 -->
+<div class="row mt-5 mb-4" id="bottomActionBar" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body text-center py-4">
+                <div class="d-flex justify-content-center align-items-center gap-3">
+                    <i class="bi bi-check-circle-fill text-success" style="font-size: 1.5rem;"></i>
+                    <div>
+                        <h5 class="mb-1">📖 您已阅读完所有文章</h5>
+                        <p class="text-muted mb-0">您可以选择感兴趣的新闻来生成今日快报</p>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-primary btn-lg" id="btnGenerateDigestBottom" disabled>
+                        <i class="bi bi-file-earmark-text"></i>
+                        生成快报 (<span id="selectedCountBottom">0</span>)
+                    </button>
+                    <button class="btn btn-outline-secondary btn-lg ms-2" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">
+                        <i class="bi bi-arrow-up"></i>
+                        返回顶部
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -473,6 +1228,20 @@
         document.getElementById('groupByEvent').addEventListener('change', loadNews);
         document.getElementById('separateHistory').addEventListener('change', loadNews);
 
+        // 绑定排除来源相关事件
+        document.getElementById('excludeSourceSelect').addEventListener('change', function() {
+            if (this.value) {
+                addExcludedSource(this.value, this.options[this.selectedIndex].text);
+                this.value = ''; // 重置下拉框
+                loadNews();
+            }
+        });
+
+        document.getElementById('btnClearExcludedSources').addEventListener('click', function() {
+            clearAllExcludedSources();
+            loadNews();
+        });
+
         // 绑定分类全选/全不选按钮事件
         document.getElementById('btnSelectAllCategories').addEventListener('click', function() {
             document.querySelectorAll('.category-checkbox').forEach(checkbox => {
@@ -495,11 +1264,18 @@
 
         // 绑定生成快报按钮事件
         document.getElementById('btnGenerateDigest').addEventListener('click', showGenerateDigestModal);
+        document.getElementById('btnGenerateDigestBottom').addEventListener('click', showGenerateDigestModal);
         document.getElementById('btnConfirmGenerate').addEventListener('click', generateDigest);
+
+        // 初始化滚动进度监听器
+        initScrollProgress();
     });
 
     let selectedNews = new Set();
     let currentNewsId = null;
+    let excludedSources = new Map(); // 存储排除的来源，key为ID，value为名称
+    let totalArticles = 0;
+    let articleElements = [];
 
     // 更新分类选择计数
     function updateCategoryCount() {
@@ -508,22 +1284,102 @@
         document.getElementById('selectedCategoriesCount').textContent = selectedCount;
     }
 
+    // 添加排除来源
+    function addExcludedSource(sourceId, sourceName) {
+        excludedSources.set(sourceId, sourceName);
+        updateExcludedSourcesDisplay();
+        updateExcludeSourceSelect();
+    }
+
+    // 移除排除来源
+    function removeExcludedSource(sourceId) {
+        excludedSources.delete(sourceId);
+        updateExcludedSourcesDisplay();
+        updateExcludeSourceSelect();
+        loadNews();
+    }
+
+    // 清空所有排除来源
+    function clearAllExcludedSources() {
+        excludedSources.clear();
+        updateExcludedSourcesDisplay();
+        updateExcludeSourceSelect();
+    }
+
+    // 更新排除来源显示
+    function updateExcludedSourcesDisplay() {
+        const excludedRow = document.getElementById('excludedSourcesRow');
+        const excludedList = document.getElementById('excludedSourcesList');
+        
+        if (excludedSources.size > 0) {
+            excludedRow.style.display = 'block';
+            const tags = Array.from(excludedSources.entries()).map(([id, name]) => 
+                `<span class="badge bg-warning text-dark me-1" style="cursor: pointer;" onclick="removeExcludedSource('${id}')">
+                    ${name} <i class="bi bi-x"></i>
+                </span>`
+            ).join('');
+            excludedList.innerHTML = tags;
+        } else {
+            excludedRow.style.display = 'none';
+        }
+    }
+
+    // 更新排除来源下拉框选项
+    function updateExcludeSourceSelect() {
+        const excludeSelect = document.getElementById('excludeSourceSelect');
+        
+        // 清空现有选项（保留默认选项）
+        while (excludeSelect.children.length > 1) {
+            excludeSelect.removeChild(excludeSelect.lastChild);
+        }
+        
+        // 重新添加可选择的来源（排除已选择的）
+        axios.get('/api/sources/')
+            .then(response => {
+                const sources = response.data;
+                sources.forEach(source => {
+                    if (!excludedSources.has(source.id.toString())) {
+                        const option = document.createElement('option');
+                        option.value = source.id;
+                        option.textContent = source.name;
+                        excludeSelect.appendChild(option);
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error loading sources for exclude select:', error);
+            });
+    }
+
     // 加载新闻源
     function loadSources() {
-        axios.get('/api/sources')
+        axios.get('/api/sources/')
             .then(response => {
                 const sources = response.data;
                 const sourceFilter = document.getElementById('sourceFilter');
+                const excludeSourceSelect = document.getElementById('excludeSourceSelect');
 
                 sources.forEach(source => {
+                    // 添加到指定来源下拉框
                     const option = document.createElement('option');
                     option.value = source.id;
                     option.textContent = source.name;
                     sourceFilter.appendChild(option);
+
+                    // 添加到排除来源下拉框
+                    const excludeOption = document.createElement('option');
+                    excludeOption.value = source.id;
+                    excludeOption.textContent = source.name;
+                    excludeSourceSelect.appendChild(excludeOption);
                 });
+
+                // 初始化排除来源显示
+                updateExcludedSourcesDisplay();
             })
             .catch(error => {
                 console.error('Error loading sources:', error);
+                // 可以添加错误提示
+                console.log('Failed to load news sources');
             });
     }
 
@@ -533,6 +1389,7 @@
         const selectedCategories = Array.from(document.querySelectorAll('.category-checkbox:checked'))
             .map(checkbox => checkbox.value);
         const sourceId = document.getElementById('sourceFilter').value;
+        const excludedSourceIds = Array.from(excludedSources.keys());
         const hours = document.getElementById('timeRange').value;
         const excludeUsed = document.getElementById('excludeUsed').checked;
         const groupByEvent = document.getElementById('groupByEvent').checked;
@@ -540,9 +1397,15 @@
 
         // 显示加载中
         document.getElementById('newsContainer').innerHTML = `
-            <div class="col-12 text-center py-5">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
+            <div class="col-12">
+                <div class="loading-container text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <div class="mt-3">
+                        <h5 class="text-muted">正在加载新闻...</h5>
+                        <p class="text-secondary">请稍候，正在筛选符合条件的资讯</p>
+                    </div>
                 </div>
             </div>
         `;
@@ -551,13 +1414,18 @@
         if (selectedCategories.length === 0) {
             // 如果没有选择任何分类，显示提示信息
             document.getElementById('newsContainer').innerHTML = `
-                <div class="col-12 text-center py-5">
-                    <div class="alert alert-info">
-                        <i class="bi bi-info-circle"></i> 请至少选择一个分类来查看新闻
+                <div class="col-12">
+                    <div class="loading-container text-center">
+                        <div class="alert alert-info d-inline-block">
+                            <i class="bi bi-info-circle me-2"></i> 请至少选择一个分类来查看新闻
+                        </div>
                     </div>
                 </div>
             `;
-            return;
+                                // 更新统计信息
+                    updateNewsStatsInfo(0, 'no-category');
+                    updateArticleCount(0);
+                    return;
         }
 
         // 根据显示模式选择不同的API端点
@@ -577,6 +1445,12 @@
         });
 
         if (sourceId) url += `&source_id=${sourceId}`;
+        
+        // 处理排除来源
+        excludedSourceIds.forEach(sourceId => {
+            url += `&exclude_source_id=${sourceId}`;
+        });
+        
         if (excludeUsed) url += `&exclude_used=true`;
 
         axios.get(url)
@@ -601,6 +1475,10 @@
                             </div>
                         </div>
                     `;
+                    
+                    // 更新页面标题处的统计信息
+                    updateNewsStatsInfo(fresh_news.total + similar_to_history.total, 'separated');
+                    updateArticleCount(fresh_news.total + similar_to_history.total);
 
                     // 渲染今日新文章
                     if (fresh_news.total > 0) {
@@ -644,6 +1522,9 @@
                                 <p class="text-muted">没有找到符合条件的新闻</p>
                             </div>
                         `;
+                        // 更新统计信息
+                        updateNewsStatsInfo(0, 'separated');
+                        updateArticleCount(0);
                     }
                 } else if (groupByEvent) {
                     // 处理分组显示
@@ -658,6 +1539,9 @@
                                 <p class="text-muted">没有找到符合条件的新闻</p>
                             </div>
                         `;
+                        // 更新统计信息
+                        updateNewsStatsInfo(0, 'grouped');
+                        updateArticleCount(0);
                         return;
                     }
 
@@ -674,6 +1558,10 @@
                             </div>
                         </div>
                     `;
+                    
+                    // 更新页面标题处的统计信息
+                    updateNewsStatsInfo(total_news, 'grouped');
+                    updateArticleCount(total_news);
 
                     // 先渲染独立新闻
                     if (standaloneGroups.length > 0) {
@@ -725,9 +1613,16 @@
                                 <p class="text-muted">没有找到符合条件的新闻</p>
                             </div>
                         `;
+                        // 更新统计信息
+                        updateNewsStatsInfo(0, 'list');
+                        updateArticleCount(0);
                         return;
                     }
 
+                    // 更新页面标题处的统计信息
+                    updateNewsStatsInfo(items.length, 'list');
+                    updateArticleCount(items.length);
+                    
                     // 添加新闻卡片
                     items.forEach(news => {
                         renderNewsCard(news, container);
@@ -741,6 +1636,9 @@
                             <p class="text-danger">加载新闻失败</p>
                         </div>
                     `;
+                // 更新统计信息
+                updateNewsStatsInfo(0, 'error');
+                updateArticleCount(0);
             });
     }
 
@@ -748,7 +1646,7 @@
     function renderNewsCard(news, container, isHistorySimilar = false) {
         const isSelected = selectedNews.has(news.id);
         const card = document.createElement('div');
-        card.className = 'col-md-4';
+        card.className = 'col-12 mb-3';
 
         // 为历史相似的文章添加特殊样式
         const cardExtraClasses = isHistorySimilar ? 'opacity-75 border-muted' : '';
@@ -766,10 +1664,10 @@
                             : '<i class="fas fa-robot text-primary" title="AI生成总结"></i>') 
                           : ''}
                     </h5>
-                    <p class="card-text">${(news.generated_summary || news.summary).substring(0, 100)}...</p>
+                    <p class="card-text">${truncateSummary(news.generated_summary || news.summary, 100)}</p>
                 </div>
                 <div class="card-footer bg-transparent">
-                    <small class="text-muted">${formatDate(news.created_at)}</small>
+                    <small class="text-muted">来源: ${news.source_name || '未知来源'} | ${formatDate(news.created_at)}</small>
                     <div>
                         <button class="btn btn-sm btn-outline-primary btn-view" data-id="${news.id}">查看</button>
                         <button class="btn btn-sm ${isSelected ? 'btn-success' : 'btn-outline-success'} btn-select" data-id="${news.id}">
@@ -849,7 +1747,7 @@
 
                     detailContent.innerHTML = `
                     <h4>${news.title}</h4>
-                    <div class="text-muted mb-2">来源: ${news.source_id} | 时间: ${formatDate(news.created_at)}</div>
+                    <div class="text-muted mb-2">来源: ${news.source_name || '未知来源'} | 时间: ${formatDate(news.created_at)}</div>
                     
                     <div class="card mb-3">
                         <div class="card-header bg-light">原始内容摘要</div>
@@ -953,9 +1851,11 @@
         
         // 更新选择计数
         document.getElementById('selectedCount').textContent = selectedNews.size;
+        document.getElementById('selectedCountBottom').textContent = selectedNews.size;
         
         // 更新生成按钮状态
         document.getElementById('btnGenerateDigest').disabled = selectedNews.size === 0;
+        document.getElementById('btnGenerateDigestBottom').disabled = selectedNews.size === 0;
         
         // 更新所有相关按钮的状态（包括事件组中的按钮）
         const allSelectBtns = document.querySelectorAll(`button[data-news-id="${id}"]`);
@@ -1028,7 +1928,9 @@
                 // 清空选择
                 selectedNews.clear();
                 document.getElementById('selectedCount').textContent = '0';
+                document.getElementById('selectedCountBottom').textContent = '0';
                 document.getElementById('btnGenerateDigest').disabled = true;
+                document.getElementById('btnGenerateDigestBottom').disabled = true;
                 
                 // 重新加载新闻
                 loadNews();
@@ -1047,6 +1949,13 @@
         if (!dateStr) return '';
         const date = new Date(dateStr);
         return date.toLocaleString();
+    }
+    
+    // 辅助函数 - 截取摘要文本（控制在100字以内）
+    function truncateSummary(text, maxLength = 100) {
+        if (!text) return '';
+        if (text.length <= maxLength) return text;
+        return text.substring(0, maxLength) + '...';
     }
     
     // 辅助函数 - 获取分类标签
@@ -1152,7 +2061,7 @@
                         <p>${(group.primary.generated_summary || group.primary.summary).substring(0, 200)}...</p>
                         <div class="mt-2">
                             <small class="text-muted">
-                                来源: ${group.primary.source_id} | ${formatDate(group.primary.created_at)}
+                                来源: ${group.primary.source_name || '未知来源'} | ${formatDate(group.primary.created_at)}
                             </small>
                             <button class="btn btn-sm btn-outline-primary float-end me-2" onclick="viewNews(${group.primary.id})">
                                 查看详情
@@ -1172,7 +2081,7 @@
                                     <div class="similarity-badge">${Math.round(group.similarity_scores[news.id] * 100)}% 相似</div>
                                     <h6>${news.generated_title || news.title}</h6>
                                     <small class="text-muted">
-                                        来源: ${news.source_id} | ${formatDate(news.created_at)}
+                                        来源: ${news.source_name || '未知来源'} | ${formatDate(news.created_at)}
                                     </small>
                                     <div class="mt-2">
                                         <button class="btn btn-sm btn-outline-primary me-2" onclick="viewNews(${news.id})">
@@ -1201,7 +2110,7 @@
         
         // 创建独立新闻卡片
         const newsCard = document.createElement('div');
-        newsCard.className = 'col-md-4';
+        newsCard.className = 'col-12 mb-3';
         newsCard.innerHTML = `
             <div class="card news-card ${isSelected ? 'selected' : ''}" data-id="${news.id}">
                 <div class="card-body">
@@ -1209,10 +2118,10 @@
                     <h5 class="card-title">
                         ${news.generated_title || news.title}
                     </h5>
-                    <p class="card-text">${(news.generated_summary || news.summary).substring(0, 100)}...</p>
+                    <p class="card-text">${truncateSummary(news.generated_summary || news.summary, 100)}</p>
                 </div>
                 <div class="card-footer bg-transparent">
-                    <small class="text-muted">${formatDate(news.created_at)}</small>
+                    <small class="text-muted">来源: ${news.source_name || '未知来源'} | ${formatDate(news.created_at)}</small>
                     <div>
                         <button class="btn btn-sm btn-outline-primary btn-view" onclick="viewNews(${news.id})">查看</button>
                         <button class="btn btn-sm ${isSelected ? 'btn-success' : 'btn-outline-success'} btn-select" data-news-id="${news.id}" onclick="toggleSelectNews(${news.id})">
@@ -1248,6 +2157,36 @@
         }
     }
     
+    // 更新新闻统计信息的函数
+    function updateNewsStatsInfo(totalNews, mode) {
+        const statsEl = document.getElementById('newsStatsInfo');
+        if (!statsEl) return;
+        
+        let modeText = '';
+                 switch(mode) {
+            case 'list':
+                modeText = '列表模式';
+                break;
+            case 'grouped':
+                modeText = '分组模式';
+                break;
+            case 'separated':
+                modeText = '分离模式';
+                break;
+            case 'error':
+                modeText = '加载失败';
+                break;
+            case 'no-category':
+                modeText = '未选择分类';
+                break;
+            default:
+                modeText = '未知模式';
+                break;
+        }
+        
+        statsEl.textContent = `当前显示 ${totalNews} 条新闻 (${modeText})`;
+    }
+
     // 辅助函数 - 格式化tokens使用信息
     function formatTokensUsage(tokensUsage) {
         if (!tokensUsage) return '';
@@ -1310,6 +2249,108 @@
         `;
         
         return html;
+    }
+
+    // 初始化滚动进度功能
+    function initScrollProgress() {
+        const progressIndicator = document.getElementById('progressIndicator');
+        const progressBar = document.getElementById('progressBar');
+        const currentArticleSpan = document.querySelector('.current-article');
+        const totalArticlesSpan = document.querySelector('.total-articles');
+        const scrollHint = document.getElementById('scrollHint');
+
+        let scrollTimeout;
+
+        window.addEventListener('scroll', function() {
+            clearTimeout(scrollTimeout);
+            
+            // 显示进度条
+            if (window.scrollY > 100) {
+                progressIndicator.classList.add('visible');
+                document.body.classList.add('progress-visible');
+            } else {
+                progressIndicator.classList.remove('visible');
+                document.body.classList.remove('progress-visible');
+            }
+
+            // 更新进度
+            updateScrollProgress();
+
+            // 延迟隐藏滚动提示
+            scrollTimeout = setTimeout(() => {
+                if (scrollHint) {
+                    scrollHint.style.opacity = '0.5';
+                }
+            }, 2000);
+        });
+
+        // 鼠标悬停时显示滚动提示
+        progressIndicator.addEventListener('mouseenter', function() {
+            if (scrollHint) {
+                scrollHint.style.opacity = '1';
+            }
+        });
+    }
+
+    // 更新滚动进度
+    function updateScrollProgress() {
+        const progressBar = document.getElementById('progressBar');
+        const currentArticleSpan = document.querySelector('.current-article');
+        
+        if (articleElements.length === 0) {
+            return;
+        }
+
+        let currentArticle = 0;
+        const viewportHeight = window.innerHeight;
+        const scrollTop = window.scrollY;
+
+        // 计算当前可见的文章数量
+        articleElements.forEach((element, index) => {
+            const rect = element.getBoundingClientRect();
+            const elementTop = scrollTop + rect.top;
+            
+            // 如果文章的顶部已经滚过视口中心，则认为已读
+            if (elementTop < scrollTop + viewportHeight / 2) {
+                currentArticle = index + 1;
+            }
+        });
+
+        // 更新进度条
+        const progress = (currentArticle / totalArticles) * 100;
+        progressBar.style.width = `${progress}%`;
+        
+        // 更新文字
+        currentArticleSpan.textContent = currentArticle;
+        
+        // 更新滚动提示
+        const scrollHint = document.getElementById('scrollHint');
+        const remaining = totalArticles - currentArticle;
+        if (remaining > 0) {
+            scrollHint.textContent = `还有 ${remaining} 篇文章未阅读`;
+        } else {
+            scrollHint.textContent = '已阅读完所有文章';
+        }
+    }
+
+    // 更新文章计数（在加载新闻时调用）
+    function updateArticleCount(total) {
+        totalArticles = total;
+        document.querySelector('.total-articles').textContent = total;
+        
+        // 显示或隐藏底部操作栏
+        const bottomActionBar = document.getElementById('bottomActionBar');
+        if (total > 0) {
+            bottomActionBar.style.display = 'block';
+        } else {
+            bottomActionBar.style.display = 'none';
+        }
+        
+        // 更新文章元素列表
+        setTimeout(() => {
+            articleElements = Array.from(document.querySelectorAll('.news-card, .event-group'));
+            updateScrollProgress();
+        }, 100);
     }
 </script>
 {% endblock %}

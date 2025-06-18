@@ -8,6 +8,7 @@ from .digest import Digest
 from .event_group import EventGroup
 from .news_similarity import NewsSimilarity, NewsEventGroup, NewsGroupMembership
 from .scheduler_config import SchedulerConfig
+from .task_execution import TaskExecution
 
 __all__ = [
     "Source",
@@ -17,5 +18,6 @@ __all__ = [
     "NewsSimilarity",
     "NewsEventGroup", 
     "NewsGroupMembership",
-    "SchedulerConfig"
+    "SchedulerConfig",
+    "TaskExecution"
 ] 

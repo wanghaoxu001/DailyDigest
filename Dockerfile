@@ -66,7 +66,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 安装 Playwright 浏览器
+RUN python -m playwright install
 RUN python -m playwright install chromium
+RUN python -m playwright install-deps
 
 # 下载 NLTK 数据
 RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('stopwords'); nltk.download('wordnet'); nltk.download('averaged_perceptron_tagger')"
@@ -79,7 +81,7 @@ RUN mkdir -p data/logs data/outputs data/wechat_articles data/processed_articles
 
 # 设置环境变量
 ENV PYTHONPATH=/app
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
 
 # 暴露端口
 EXPOSE 18899

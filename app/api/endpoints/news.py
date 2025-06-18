@@ -28,6 +28,7 @@ class NewsBase(BaseModel):
 class NewsResponse(NewsBase):
     id: int
     source_id: int
+    source_name: Optional[str] = None
     original_url: str
     original_language: Optional[str] = None
     entities: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None
@@ -69,11 +70,20 @@ class SeparatedNewsResponse(BaseModel):
 
 
 # 辅助函数 - 将ORM模型转换为字典
-def news_to_dict(news: News) -> dict:
+def news_to_dict(news: News, db: Session = None) -> dict:
     """将数据库News模型转换为适合API响应的字典"""
+    # 获取来源名称
+    source_name = None
+    if db and news.source_id:
+        from app.models.source import Source
+        source = db.query(Source).filter(Source.id == news.source_id).first()
+        if source:
+            source_name = source.name
+    
     return {
         "id": news.id,
         "source_id": news.source_id,
+        "source_name": source_name,
         "title": news.title,
         "summary": news.summary,
         "original_url": news.original_url,
@@ -98,6 +108,7 @@ def get_news_list(
     skip: int = 0,
     limit: int = 20,
     source_id: Optional[int] = None,
+    exclude_source_id: Optional[List[int]] = Query(None, description="Source IDs to exclude"),
     category: Optional[str] = None,
     is_processed: Optional[bool] = None,
     is_used_in_digest: Optional[bool] = None,
@@ -118,6 +129,10 @@ def get_news_list(
     # 应用筛选条件
     if source_id:
         query = query.filter(News.source_id == source_id)
+
+    # 排除指定的来源
+    if exclude_source_id:
+        query = query.filter(~News.source_id.in_(exclude_source_id))
 
     if category:
         # 将字符串转换为对应的枚举值进行比较
@@ -172,7 +187,7 @@ def get_news_list(
         paginated_items = query.offset(skip).limit(limit).all()
 
     # 手动转换ORM对象到字典
-    news_dicts = [news_to_dict(news) for news in paginated_items]
+    news_dicts = [news_to_dict(news, db) for news in paginated_items]
 
     return {"total": total, "items": news_dicts}
 
@@ -184,6 +199,7 @@ def get_recent_news(
     limit: int = 100,
     exclude_used: bool = False,
     source_id: Optional[int] = None,
+    exclude_source_id: Optional[List[int]] = Query(None, description="Source IDs to exclude"),
     category: Optional[List[str]] = Query(None, description="Category filters, can specify multiple"),
     db: Session = Depends(get_db),
 ):
@@ -205,6 +221,10 @@ def get_recent_news(
     # 应用筛选条件
     if source_id:
         query = query.filter(News.source_id == source_id)
+
+    # 排除指定的来源
+    if exclude_source_id:
+        query = query.filter(~News.source_id.in_(exclude_source_id))
 
     if category:
         # 处理多个分类筛选
@@ -244,7 +264,7 @@ def get_recent_news(
     paginated_items = filtered_items[skip:skip + limit]
 
     # 手动转换ORM对象到字典
-    news_dicts = [news_to_dict(news) for news in paginated_items]
+    news_dicts = [news_to_dict(news, db) for news in paginated_items]
 
     return {"total": total, "items": news_dicts}
 
@@ -256,6 +276,7 @@ def get_recent_news_grouped(
     limit: int = 100,
     exclude_used: bool = False,
     source_id: Optional[int] = None,
+    exclude_source_id: Optional[List[int]] = Query(None, description="Source IDs to exclude"),
     category: Optional[List[str]] = Query(None, description="Category filters, can specify multiple"),
     db: Session = Depends(get_db),
 ):
@@ -274,6 +295,7 @@ def get_recent_news_grouped(
             hours=hours,
             categories=category,
             source_ids=[source_id] if source_id else None,
+            exclude_source_ids=exclude_source_id,
             exclude_used=exclude_used
         )
         
@@ -286,10 +308,10 @@ def get_recent_news_grouped(
         
         for group in paginated_groups:
             # 转换primary新闻
-            primary_dict = news_to_dict(group['primary'])
+            primary_dict = news_to_dict(group['primary'], db)
             
             # 转换related新闻
-            related_dicts = [news_to_dict(news) for news in group['related']]
+            related_dicts = [news_to_dict(news, db) for news in group['related']]
             
             response_group = {
                 'id': group['id'],
@@ -323,6 +345,9 @@ def get_recent_news_grouped(
             query = query.filter(News.is_used_in_digest == False)
         if source_id:
             query = query.filter(News.source_id == source_id)
+        # 排除指定的来源
+        if exclude_source_id:
+            query = query.filter(~News.source_id.in_(exclude_source_id))
         if category:
             try:
                 category_enums = []
@@ -352,7 +377,7 @@ def get_recent_news_grouped(
                 'event_label': news.generated_title or news.title,
                 'news_count': 1,
                 'sources': [str(news.source_id)],
-                'primary': news_to_dict(news),
+                'primary': news_to_dict(news, db),
                 'related': [],
                 'similarity_scores': {},
                 'entities': {},
@@ -374,6 +399,7 @@ def get_recent_news_separated(
     limit: int = 100,
     exclude_used: bool = False,
     source_id: Optional[int] = None,
+    exclude_source_id: Optional[List[int]] = Query(None, description="Source IDs to exclude"),
     category: Optional[List[str]] = Query(None, description="Category filters, can specify multiple"),
     db: Session = Depends(get_db),
 ):
@@ -395,6 +421,10 @@ def get_recent_news_separated(
     # 应用筛选条件
     if source_id:
         query = query.filter(News.source_id == source_id)
+
+    # 排除指定的来源
+    if exclude_source_id:
+        query = query.filter(~News.source_id.in_(exclude_source_id))
 
     if category:
         # 处理多个分类筛选
@@ -433,11 +463,11 @@ def get_recent_news_separated(
     # 应用分页到新文章
     fresh_total = len(fresh_news)
     fresh_paginated = fresh_news[skip:skip + limit]
-    fresh_dicts = [news_to_dict(news) for news in fresh_paginated]
+    fresh_dicts = [news_to_dict(news, db) for news in fresh_paginated]
     
     # 相似历史的文章不分页，全部返回（通常数量较少）
     similar_total = len(similar_to_history)
-    similar_dicts = [news_to_dict(news) for news in similar_to_history]
+    similar_dicts = [news_to_dict(news, db) for news in similar_to_history]
 
     return {
         "fresh_news": {
@@ -460,7 +490,7 @@ def get_news_detail(news_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="新闻不存在")
 
     # 手动转换ORM对象到字典
-    return news_to_dict(db_news)
+    return news_to_dict(db_news, db)
 
 
 @router.post("/{news_id}/process", response_model=NewsResponse)
@@ -477,7 +507,7 @@ def process_news_item(news_id: int, db: Session = Depends(get_db)):
         db.commit()
 
         # 手动转换ORM对象到字典
-        return news_to_dict(processed_news)
+        return news_to_dict(processed_news, db)
     except Exception as e:
         db.rollback()
         logging.error(f"处理新闻失败: {str(e)}", exc_info=True)
@@ -500,7 +530,7 @@ def mark_news_as_used(news_id: int, db: Session = Depends(get_db)):
     db.refresh(db_news)
 
     # 手动转换ORM对象到字典
-    return news_to_dict(db_news)
+    return news_to_dict(db_news, db)
 
 
 @router.put("/{news_id}/mark-unused", response_model=NewsResponse)
@@ -516,7 +546,7 @@ def mark_news_as_unused(news_id: int, db: Session = Depends(get_db)):
     db.refresh(db_news)
 
     # 手动转换ORM对象到字典
-    return news_to_dict(db_news)
+    return news_to_dict(db_news, db)
 
 
 # 批量操作请求模型

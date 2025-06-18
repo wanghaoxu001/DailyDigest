@@ -2,12 +2,14 @@ import logging
 import schedule
 import time
 import threading
+import traceback
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
 from app.services.event_group_cache import event_group_cache_service
+from app.services.task_execution_service import task_execution_service
 from app.models.news import NewsCategory
 
 logger = logging.getLogger(__name__)
@@ -23,14 +25,11 @@ class SchedulerService:
         # 从数据库加载配置，如果失败则使用默认值
         self._load_config_from_database()
         
-        # 执行历史记录
-        self.execution_history: List[Dict] = []
-        
-        # 错误记录
-        self.error_history: List[Dict] = []
-        
-        # 当前正在执行的任务状态
+        # 当前正在执行的任务状态 (仅用于内存中的任务进度跟踪)
         self.current_tasks: Dict[str, Dict] = {}
+        
+        # 任务执行记录的数据库ID，用于跟踪当前任务的执行记录
+        self.current_task_executions: Dict[str, int] = {}
         
         # 系统启动时清理状态
         self._cleanup_on_startup()
@@ -107,56 +106,49 @@ class SchedulerService:
     def _check_and_cleanup_incomplete_tasks(self):
         """检查并清理未完成的任务"""
         try:
-            import os
-            import psutil
+            # 强制完成数据库中所有运行状态的任务
+            completed_count = task_execution_service.force_complete_running_tasks("系统重启")
             
-            # 检查是否有之前的任务状态文件
-            status_file = "task_status.tmp"
-            if os.path.exists(status_file):
-                logger.warning("检测到系统异常关闭，存在未完成的任务状态文件")
-                
-                try:
-                    with open(status_file, 'r', encoding='utf-8') as f:
-                        import json
-                        task_data = json.load(f)
-                        
-                    if task_data.get('running_tasks'):
-                        running_tasks = task_data['running_tasks']
-                        logger.warning(f"上次系统关闭时有未完成的任务: {', '.join(running_tasks)}")
-                        
-                        # 记录清理信息
-                        self._add_execution_record("system", "warning", 
-                            f"系统重启，清理了上次未完成的任务: {', '.join(running_tasks)}", {
-                                'cleanup_tasks': running_tasks,
-                                'startup_time': datetime.now().isoformat(),
-                                'last_shutdown': task_data.get('last_update', 'unknown')
-                            })
-                    
-                    # 删除状态文件
-                    os.remove(status_file)
-                    logger.info("已清理任务状态文件")
-                    
-                except Exception as e:
-                    logger.error(f"清理任务状态文件失败: {e}")
-                    # 即使解析失败，也删除文件
-                    try:
-                        os.remove(status_file)
-                    except:
-                        pass
+            if completed_count > 0:
+                logger.warning(f"系统重启时强制完成了 {completed_count} 个运行中的任务")
+                # 记录系统重启事件
+                task_execution_service.create_task_start(
+                    task_type="system", 
+                    message=f"系统重启，强制完成了 {completed_count} 个运行中的任务",
+                    details={
+                        'startup_time': datetime.now().isoformat(),
+                        'completed_running_tasks': completed_count
+                    }
+                )
             else:
                 # 正常启动，记录启动事件
-                self._add_execution_record("system", "info", 
-                    "系统正常启动，初始化调度器服务", {
-                        'startup_time': datetime.now().isoformat()
-                    })
+                task_execution_service.create_task_start(
+                    task_type="system",
+                    message="系统正常启动，初始化调度器服务",
+                    details={'startup_time': datetime.now().isoformat()}
+                )
+                
+            # 清理旧的任务状态文件（如果存在）
+            import os
+            status_file = "task_status.tmp"
+            if os.path.exists(status_file):
+                try:
+                    os.remove(status_file)
+                    logger.info("已清理旧的任务状态文件")
+                except Exception as e:
+                    logger.warning(f"清理任务状态文件失败: {e}")
                 
         except Exception as e:
             logger.error(f"检查未完成任务时出错: {e}")
-            # 确保系统能正常启动
-            self._add_execution_record("system", "warning", 
-                f"系统启动时检查任务状态出错: {str(e)}", {
-                    'startup_time': datetime.now().isoformat()
-                })
+            # 确保系统能正常启动，记录错误
+            task_execution_service.create_task_start(
+                task_type="system",
+                message=f"系统启动时检查任务状态出错: {str(e)}",
+                details={
+                    'startup_time': datetime.now().isoformat(),
+                    'error': str(e)
+                }
+            )
     
     def _save_task_status(self):
         """保存当前任务状态到临时文件"""
@@ -180,27 +172,48 @@ class SchedulerService:
         except Exception as e:
             logger.error(f"保存任务状态失败: {e}")
         
-    def _add_execution_record(self, task_type: str, status: str, message: str, details: Dict = None):
-        """添加执行记录"""
-        record = {
-            'timestamp': datetime.now().isoformat(),
-            'task_type': task_type,
-            'status': status,
-            'message': message,
-            'details': details or {}
-        }
+    def _start_task_execution(self, task_type: str, message: str, details: Dict = None) -> Optional[int]:
+        """开始任务执行，创建持久化记录"""
+        execution = task_execution_service.create_task_start(
+            task_type=task_type,
+            message=message,
+            details=details or {}
+        )
         
-        self.execution_history.insert(0, record)
+        if execution:
+            # 记录任务执行ID
+            self.current_task_executions[task_type] = execution.id
+            return execution.id
         
-        # 保持历史记录数量限制
-        if len(self.execution_history) > self.max_history_records:
-            self.execution_history = self.execution_history[:self.max_history_records]
-            
-        # 如果是错误，也添加到错误历史
-        if status == 'error':
-            self.error_history.insert(0, record)
-            if len(self.error_history) > self.max_error_records:
-                self.error_history = self.error_history[:self.max_error_records]
+        return None
+    
+    def _complete_task_execution(self, task_type: str, status: str = 'success', 
+                               message: str = None, details: Dict = None,
+                               items_processed: int = None, items_success: int = None, 
+                               items_failed: int = None):
+        """完成任务执行记录"""
+        execution_id = self.current_task_executions.get(task_type)
+        if execution_id:
+            task_execution_service.complete_task(
+                execution_id, status, message, details,
+                items_processed, items_success, items_failed
+            )
+            # 清理记录
+            if task_type in self.current_task_executions:
+                del self.current_task_executions[task_type]
+        
+    def _fail_task_execution(self, task_type: str, error_message: str, 
+                           error_type: str = None, details: Dict = None):
+        """标记任务执行失败"""
+        execution_id = self.current_task_executions.get(task_type)
+        if execution_id:
+            task_execution_service.fail_task(
+                execution_id, error_message, error_type, 
+                traceback.format_exc(), details
+            )
+            # 清理记录
+            if task_type in self.current_task_executions:
+                del self.current_task_executions[task_type]
         
         # 更新当前任务状态
         if status == 'running':
@@ -247,6 +260,13 @@ class SchedulerService:
                 'last_update': datetime.now()
             })
             logger.info(f"[{task_type}] {message} ({current}/{total}, {percentage:.1f}%)")
+            
+            # 更新数据库中的进度记录
+            execution_id = self.current_task_executions.get(task_type)
+            if execution_id:
+                task_execution_service.update_task_progress(
+                    execution_id, current, total, message
+                )
         
     def start(self):
         """启动定时任务服务"""
@@ -264,7 +284,10 @@ class SchedulerService:
         self.scheduler_thread.start()
         
         logger.info("定时任务服务已启动")
-        self._add_execution_record("scheduler", "success", "定时任务服务已启动")
+        task_execution_service.create_task_start(
+            task_type="scheduler", 
+            message="定时任务服务已启动"
+        )
         
     def stop(self):
         """停止定时任务服务"""
@@ -286,7 +309,10 @@ class SchedulerService:
             logger.error(f"清理任务状态文件失败: {e}")
             
         logger.info("定时任务服务已停止")
-        self._add_execution_record("scheduler", "success", "定时任务服务已停止")
+        task_execution_service.create_task_start(
+            task_type="scheduler", 
+            message="定时任务服务已停止"
+        )
         
     def _setup_scheduled_jobs(self):
         """设置定时任务"""
@@ -303,11 +329,15 @@ class SchedulerService:
         schedule.every().day.at("02:00").do(self._cleanup_old_cache_job)
         
         logger.info(f"已设置定时任务: 事件生成间隔={self.event_generation_interval}小时, 新闻源抓取间隔={self.crawl_sources_interval}小时")
-        self._add_execution_record("scheduler", "success", "定时任务配置已更新", {
-            'event_generation_interval': self.event_generation_interval,
-            'crawl_sources_interval': self.crawl_sources_interval,
-            'total_jobs': len(schedule.jobs)
-        })
+        task_execution_service.create_task_start(
+            task_type="scheduler", 
+            message="定时任务配置已更新",
+            details={
+                'event_generation_interval': self.event_generation_interval,
+                'crawl_sources_interval': self.crawl_sources_interval,
+                'total_jobs': len(schedule.jobs)
+            }
+        )
         
     def _run_scheduler(self):
         """运行调度器"""
@@ -319,7 +349,10 @@ class SchedulerService:
                 time.sleep(60)  # 每分钟检查一次
             except Exception as e:
                 logger.error(f"定时任务执行异常: {str(e)}", exc_info=True)
-                self._add_execution_record("scheduler", "error", f"调度器执行异常: {str(e)}")
+                task_execution_service.create_task_start(
+                    task_type="scheduler", 
+                    message=f"调度器执行异常: {str(e)}"
+                )
                 time.sleep(60)  # 出错后继续运行
                 
         logger.info("定时任务调度器已停止")
@@ -329,23 +362,21 @@ class SchedulerService:
         # 检查是否已有相同任务在运行
         if "crawl_sources" in self.current_tasks:
             logger.warning("新闻源抓取任务已在运行中，跳过定时执行")
-            self._add_execution_record("crawl_sources", "warning", "定时任务跳过：任务已在运行中")
+            task_execution_service.create_task_start(
+                task_type="crawl_sources", 
+                message="定时任务跳过：任务已在运行中"
+            )
             return
             
-        start_time = datetime.now()
         logger.info("开始执行定时新闻源抓取任务")
-        self._add_execution_record("crawl_sources", "running", "开始执行定时新闻源抓取任务")
+        execution_id = self._start_task_execution("crawl_sources", "开始执行定时新闻源抓取任务")
         
         try:
             # 在新线程中执行抓取
             self._execute_crawl_sources()
         except Exception as e:
-            execution_time = (datetime.now() - start_time).total_seconds()
             logger.error(f"定时新闻源抓取任务执行失败: {str(e)}", exc_info=True)
-            self._add_execution_record("crawl_sources", "error", f"抓取任务执行失败: {str(e)}", {
-                'execution_time': execution_time,
-                'error_details': str(e)
-            })
+            self._fail_task_execution("crawl_sources", f"抓取任务执行失败: {str(e)}", "TaskExecutionError")
             
             # 任务失败，从current_tasks中移除
             if "crawl_sources" in self.current_tasks:
@@ -435,13 +466,12 @@ class SchedulerService:
                 execution_time = (datetime.now() - start_time).total_seconds()
                 message = f"抓取任务完成，用时: {execution_time:.2f}秒，处理了 {total_processed} 个源，成功 {successful_crawls} 个，跳过 {skipped_sources} 个"
                 
-                self._add_execution_record("crawl_sources", "success", message, {
-                    'execution_time': execution_time,
+                self._complete_task_execution("crawl_sources", "success", message, {
                     'total_sources': len(active_sources),
                     'processed_sources': total_processed,
                     'successful_crawls': successful_crawls,
                     'skipped_sources': skipped_sources
-                })
+                }, total_processed, successful_crawls, len(active_sources) - successful_crawls - skipped_sources)
                 
                 # 任务完成，从current_tasks中移除
                 if "crawl_sources" in self.current_tasks:
@@ -451,24 +481,23 @@ class SchedulerService:
                 db.close()
             
         except Exception as e:
-            execution_time = (datetime.now() - start_time).total_seconds()
             logger.error(f"定时新闻源抓取任务执行失败: {str(e)}", exc_info=True)
-            self._add_execution_record("crawl_sources", "error", f"抓取任务执行失败: {str(e)}", {
-                'execution_time': execution_time,
-                'error_details': str(e)
-            })
+            self._fail_task_execution("crawl_sources", f"抓取任务执行失败: {str(e)}", "CrawlSourcesError")
         
     def _generate_event_groups_job(self, is_manual_trigger=False, use_multiprocess=True):
         """生成事件分组的定时任务 - 改为计算并存储相似度和分组"""
         # 只有定时触发时才检查冲突，手动触发时跳过检查（因为在run_event_generation_now中已检查）
         if not is_manual_trigger and "event_groups" in self.current_tasks:
             logger.warning("事件分组任务已在运行中，跳过定时执行")
-            self._add_execution_record("event_groups", "warning", "定时任务跳过：任务已在运行中")
+            task_execution_service.create_task_start(
+                task_type="event_groups", 
+                message="定时任务跳过：任务已在运行中"
+            )
             return
             
         start_time = datetime.now()
         logger.info("开始执行定时相似度计算和事件分组任务")
-        self._add_execution_record("event_groups", "running", "开始执行相似度计算和事件分组任务")
+        execution_id = self._start_task_execution("event_groups", "开始执行相似度计算和事件分组任务")
         
         db = SessionLocal()
         try:
@@ -561,8 +590,7 @@ class SchedulerService:
             )
             
             logger.info(message)
-            self._add_execution_record("event_groups", "success", message, {
-                'execution_time': execution_time,
+            self._complete_task_execution("event_groups", "success", message, {
                 'similarity_result': similarity_result,
                 'groups_result': groups_result,
                 'cache_total_groups': cache_total_groups,
@@ -573,21 +601,17 @@ class SchedulerService:
                     'cache_generation': cache_total_groups,
                     'cleanup': cleanup_result
                 }
-            })
+            }, similarity_result.get('new_similarities', 0) + groups_result.get('groups_created', 0), 
+               similarity_result.get('new_similarities', 0) + groups_result.get('groups_created', 0), 0)
             
             # 任务完成，从current_tasks中移除
             if "event_groups" in self.current_tasks:
                 del self.current_tasks["event_groups"]
                     
         except Exception as e:
-            execution_time = (datetime.now() - start_time).total_seconds()
             error_message = f"相似度和分组任务失败: {str(e)}"
             logger.error(f"定时相似度和分组任务失败: {str(e)}", exc_info=True)
-            self._add_execution_record("event_groups", "error", error_message, {
-                'execution_time': execution_time,
-                'error_details': str(e),
-                'traceback': str(e.__traceback__) if hasattr(e, '__traceback__') else None
-            })
+            self._fail_task_execution("event_groups", error_message, "EventGroupsError")
             
             # 任务失败，从current_tasks中移除
             if "event_groups" in self.current_tasks:
@@ -601,7 +625,7 @@ class SchedulerService:
         """清理过期缓存的定时任务"""
         start_time = datetime.now()
         logger.info("开始执行缓存清理任务")
-        self._add_execution_record("cache_cleanup", "running", "开始执行缓存清理任务")
+        execution_id = self._start_task_execution("cache_cleanup", "开始执行缓存清理任务")
         
         db = SessionLocal()
         try:
@@ -623,19 +647,14 @@ class SchedulerService:
             message = f"缓存清理完成，用时: {execution_time:.2f}秒，清理了 {deleted_count} 条过期记录"
             
             logger.info(message)
-            self._add_execution_record("cache_cleanup", "success", message, {
-                'execution_time': execution_time,
+            self._complete_task_execution("cache_cleanup", "success", message, {
                 'deleted_count': deleted_count,
                 'cutoff_time': cutoff_time.isoformat()
-            })
+            }, deleted_count, deleted_count, 0)
             
         except Exception as e:
-            execution_time = (datetime.now() - start_time).total_seconds()
             logger.error(f"缓存清理任务失败: {str(e)}", exc_info=True)
-            self._add_execution_record("cache_cleanup", "error", f"缓存清理失败: {str(e)}", {
-                'execution_time': execution_time,
-                'error_details': str(e)
-            })
+            self._fail_task_execution("cache_cleanup", f"缓存清理失败: {str(e)}", "CacheCleanupError")
             db.rollback()
         finally:
             db.close()
@@ -661,7 +680,10 @@ class SchedulerService:
             self._setup_scheduled_jobs()
             
         logger.info(f"事件生成间隔已更新为 {hours} 小时")
-        self._add_execution_record("config", "success", f"事件生成间隔从 {old_interval} 小时更新为 {hours} 小时")
+        task_execution_service.create_task_start(
+            task_type="config", 
+            message=f"事件生成间隔从 {old_interval} 小时更新为 {hours} 小时"
+        )
         
     def set_crawl_sources_interval(self, hours: float):
         """设置新闻源抓取间隔"""
@@ -684,7 +706,10 @@ class SchedulerService:
             self._setup_scheduled_jobs()
             
         logger.info(f"新闻源抓取间隔已更新为 {hours} 小时")
-        self._add_execution_record("config", "success", f"新闻源抓取间隔从 {old_interval} 小时更新为 {hours} 小时")
+        task_execution_service.create_task_start(
+            task_type="config", 
+            message=f"新闻源抓取间隔从 {old_interval} 小时更新为 {hours} 小时"
+        )
         
     def get_status(self) -> dict:
         """获取调度器状态"""
@@ -727,51 +752,37 @@ class SchedulerService:
         
     def get_execution_history(self, limit: int = 20, task_type: str = None) -> List[Dict]:
         """获取执行历史"""
-        history = self.execution_history
-        
-        if task_type:
-            history = [record for record in history if record['task_type'] == task_type]
-            
-        return history[:limit]
+        return task_execution_service.get_task_executions(
+            task_type=task_type, 
+            limit=limit
+        )
         
     def get_error_history(self, limit: int = 10) -> List[Dict]:
         """获取错误历史"""
-        return self.error_history[:limit]
+        return task_execution_service.get_task_executions(
+            status='error', 
+            limit=limit
+        )
         
     def get_statistics(self) -> Dict:
         """获取统计信息"""
-        now = datetime.now()
-        last_24h = now - timedelta(hours=24)
+        # 获取任务统计信息
+        stats = task_execution_service.get_task_statistics(days=1)  # 最近24小时
         
-        # 最近24小时的执行记录
-        recent_records = [
-            record for record in self.execution_history 
-            if datetime.fromisoformat(record['timestamp']) > last_24h
-        ]
+        # 获取当前运行中的任务
+        running_tasks = task_execution_service.get_running_tasks()
         
-        # 按任务类型统计
-        task_stats = {}
-        for record in recent_records:
-            task_type = record['task_type']
-            if task_type not in task_stats:
-                task_stats[task_type] = {'total': 0, 'success': 0, 'error': 0, 'warning': 0, 'running': 0}
-            
-            task_stats[task_type]['total'] += 1
-            status = record['status']
-            if status in task_stats[task_type]:
-                task_stats[task_type][status] += 1
-            else:
-                # 处理未预期的状态
-                if 'other' not in task_stats[task_type]:
-                    task_stats[task_type]['other'] = 0
-                task_stats[task_type]['other'] += 1
+        # 获取最近的执行记录
+        recent_executions = task_execution_service.get_task_executions(limit=1)
         
         return {
-            'total_executions_24h': len(recent_records),
-            'total_errors_24h': len([r for r in recent_records if r['status'] == 'error']),
-            'task_statistics': task_stats,
-            'last_execution': self.execution_history[0] if self.execution_history else None,
-            'current_tasks_count': len(self.current_tasks)
+            'total_executions_24h': stats.get('total_executions', 0),
+            'total_errors_24h': stats.get('error_count', 0),
+            'success_rate': stats.get('success_rate', 0),
+            'task_statistics': stats.get('task_type_statistics', []),
+            'last_execution': recent_executions[0] if recent_executions else None,
+            'current_tasks_count': len(self.current_tasks),
+            'running_tasks_db': running_tasks
         }
         
     def run_event_generation_now(self, use_multiprocess: bool = True):
@@ -779,12 +790,18 @@ class SchedulerService:
         # 检查是否已有相同任务在运行
         if "event_groups" in self.current_tasks:
             logger.warning("事件分组任务已在运行中，跳过本次触发")
-            self._add_execution_record("event_groups", "warning", "任务已在运行中，跳过重复执行")
+            task_execution_service.create_task_start(
+                task_type="event_groups", 
+                message="任务已在运行中，跳过重复执行"
+            )
             return {"status": "skipped", "message": "事件分组任务已在运行中，跳过重复执行"}
         
         method = "多进程" if use_multiprocess else "单进程"
         logger.info(f"手动触发事件生成任务（{method}计算）")
-        self._add_execution_record("event_groups", "running", f"手动触发事件生成任务（{method}计算）")
+        task_execution_service.create_task_start(
+            task_type="event_groups", 
+            message=f"手动触发事件生成任务（{method}计算）"
+        )
         threading.Thread(target=lambda: self._generate_event_groups_job(is_manual_trigger=True, use_multiprocess=use_multiprocess), daemon=True).start()
         return {"status": "started", "message": f"已手动触发事件分组生成任务（{method}计算）"}
         
@@ -793,27 +810,38 @@ class SchedulerService:
         # 检查是否已有相同任务在运行
         if "crawl_sources" in self.current_tasks:
             logger.warning("新闻源抓取任务已在运行中，跳过本次触发")
-            self._add_execution_record("crawl_sources", "warning", "任务已在运行中，跳过重复执行")
+            task_execution_service.create_task_start(
+                task_type="crawl_sources", 
+                message="任务已在运行中，跳过重复执行"
+            )
             return {"status": "skipped", "message": "新闻源抓取任务已在运行中，跳过重复执行"}
             
         logger.info("手动触发新闻源抓取任务")
-        self._add_execution_record("crawl_sources", "running", "手动触发新闻源抓取任务")
+        task_execution_service.create_task_start(
+            task_type="crawl_sources", 
+            message="手动触发新闻源抓取任务"
+        )
         threading.Thread(target=self._execute_crawl_sources, daemon=True).start()
         return {"status": "started", "message": "已手动触发新闻源抓取任务"}
     
-    def get_task_details(self, timestamp: str) -> Optional[Dict]:
+    def get_task_details(self, task_id: int) -> Optional[Dict]:
         """获取特定任务的详细信息"""
-        for record in self.execution_history:
-            if record['timestamp'] == timestamp:
-                return record
-        return None
+        try:
+            # 从数据库获取任务详情
+            return task_execution_service.get_task_execution_by_id(task_id)
+        except Exception as e:
+            logger.error(f"获取任务详情失败: {str(e)}")
+            return None
         
     def clear_stuck_task(self, task_type: str) -> dict:
         """清理卡住的任务状态"""
         if task_type in self.current_tasks:
             task_info = self.current_tasks[task_type]
             logger.warning(f"手动清理卡住的任务: {task_type}")
-            self._add_execution_record(task_type, "warning", f"手动清理卡住的任务，原状态: {task_info['status']}")
+            task_execution_service.create_task_start(
+                task_type=task_type, 
+                message=f"手动清理卡住的任务，原状态: {task_info['status']}"
+            )
             del self.current_tasks[task_type]
             return {"status": "cleared", "message": f"已清理任务 {task_type}"}
         else:

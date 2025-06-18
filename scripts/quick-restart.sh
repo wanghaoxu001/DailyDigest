@@ -12,10 +12,14 @@ if [ ! -f "docker-compose.dev.yml" ]; then
     echo "❌ 错误：请在项目根目录下运行此脚本"
     exit 1
 fi
-
-# 重启容器（保持数据）
-echo "🔄 重启容器..."
-docker compose -f docker-compose.dev.yml restart daily-digest
+# 检查是否存在监听18899端口的进程，如果不存在则启动服务，否则重启服务
+if ! lsof -i:18899 >/dev/null 2>&1; then
+    echo "🔄 启动服务..."
+    docker compose -f docker-compose.dev.yml up -d
+else
+    echo "🔄 重启服务..."
+    docker compose -f docker-compose.dev.yml restart daily-digest
+fi
 
 # 等待服务启动
 echo "⏳ 等待服务启动..."

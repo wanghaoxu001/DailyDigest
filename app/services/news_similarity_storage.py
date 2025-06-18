@@ -444,6 +444,7 @@ class NewsSimilarityStorageService:
     def get_precomputed_groups(self, db: Session, hours: int = 24, 
                               categories: List[str] = None, 
                               source_ids: List[int] = None,
+                              exclude_source_ids: List[int] = None,
                               exclude_used: bool = True) -> List[Dict]:
         """
         获取预计算的事件分组
@@ -489,6 +490,9 @@ class NewsSimilarityStorageService:
         if source_ids:
             news_query = news_query.filter(News.source_id.in_(source_ids))
         
+        if exclude_source_ids:
+            news_query = news_query.filter(~News.source_id.in_(exclude_source_ids))
+        
         if exclude_used:
             news_query = news_query.filter(News.is_used_in_digest != True)
         
@@ -500,7 +504,7 @@ class NewsSimilarityStorageService:
         all_qualifying_news_ids = set(news.id for news in all_qualifying_news)
         
         # 如果有过滤条件，需要通过新闻表进行筛选分组
-        if categories or source_ids or exclude_used:
+        if categories or source_ids or exclude_source_ids or exclude_used:
             # 查找包含这些新闻的分组
             valid_group_ids = db.query(NewsGroupMembership.group_id).filter(
                 NewsGroupMembership.news_id.in_(all_qualifying_news_ids)
@@ -540,6 +544,8 @@ class NewsSimilarityStorageService:
                     news_items_in_group = news_items_in_group.filter(News.category.in_(category_enums))
             if source_ids:
                 news_items_in_group = news_items_in_group.filter(News.source_id.in_(source_ids))
+            if exclude_source_ids:
+                news_items_in_group = news_items_in_group.filter(~News.source_id.in_(exclude_source_ids))
             if exclude_used:
                 news_items_in_group = news_items_in_group.filter(News.is_used_in_digest != True)
             

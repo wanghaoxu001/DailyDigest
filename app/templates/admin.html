@@ -1540,15 +1540,29 @@
         tbody.innerHTML = '';
         
         schedulerData.history.forEach(record => {
+            // 格式化执行时间显示
+            let durationDisplay = '-';
+            if (record.duration_seconds !== null && record.duration_seconds !== undefined) {
+                if (record.duration_seconds >= 60) {
+                    const minutes = Math.floor(record.duration_seconds / 60);
+                    const seconds = record.duration_seconds % 60;
+                    durationDisplay = `${minutes}分${seconds}秒`;
+                } else {
+                    durationDisplay = `${record.duration_seconds}秒`;
+                }
+            } else if (record.status === 'running') {
+                durationDisplay = '运行中';
+            }
+            
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${formatDateTime(record.timestamp)}</td>
+                <td>${formatDateTime(record.start_time || record.timestamp)}</td>
                 <td>${getTaskTypeLabel(record.task_type)}</td>
                 <td>${getStatusBadge(record.status)}</td>
                 <td class="text-truncate" style="max-width: 300px;" title="${record.message}">${record.message}</td>
-                <td>${record.details?.execution_time ? (record.details.execution_time).toFixed(2) + 's' : '-'}</td>
+                <td>${durationDisplay}</td>
                 <td>
-                    <button class="btn btn-sm btn-outline-info" onclick="showTaskDetails('${record.timestamp}')">
+                    <button class="btn btn-sm btn-outline-info" onclick="showTaskDetails(${record.id})">
                         <i class="bi bi-eye"></i> 详情
                     </button>
                 </td>
@@ -1558,14 +1572,14 @@
     }
     
     // 显示任务详情
-    function showTaskDetails(timestamp) {
+    function showTaskDetails(taskId) {
         // 显示加载状态
         const modal = new bootstrap.Modal(document.getElementById('taskDetailsModal'));
         document.getElementById('taskDetailsBody').innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p class="mt-2">加载中...</p></div>';
         modal.show();
         
         // 获取任务详情
-        axios.get(`/api/sources/scheduler/task-details/${encodeURIComponent(timestamp)}`)
+        axios.get(`/api/sources/scheduler/task-details/${taskId}`)
             .then(response => {
                 const details = response.data.task_details;
                 displayTaskDetails(details);
@@ -1585,15 +1599,30 @@
     function displayTaskDetails(details) {
         const body = document.getElementById('taskDetailsBody');
         
+        // 格式化执行时间显示
+        let durationDisplay = '未知';
+        if (details.duration_seconds !== null && details.duration_seconds !== undefined) {
+            if (details.duration_seconds >= 60) {
+                const minutes = Math.floor(details.duration_seconds / 60);
+                const seconds = details.duration_seconds % 60;
+                durationDisplay = `${minutes}分${seconds}秒`;
+            } else {
+                durationDisplay = `${details.duration_seconds}秒`;
+            }
+        } else if (details.status === 'running') {
+            durationDisplay = '正在运行中';
+        }
+        
         let detailsHtml = `
             <div class="row">
                 <div class="col-md-6">
                     <h6>基本信息</h6>
                     <table class="table table-sm">
-                        <tr><th width="30%">执行时间:</th><td>${formatDateTime(details.timestamp)}</td></tr>
+                        <tr><th width="30%">开始时间:</th><td>${formatDateTime(details.start_time || details.timestamp)}</td></tr>
+                        <tr><th>结束时间:</th><td>${details.end_time ? formatDateTime(details.end_time) : (details.status === 'running' ? '进行中' : '未知')}</td></tr>
                         <tr><th>任务类型:</th><td>${getTaskTypeLabel(details.task_type)}</td></tr>
                         <tr><th>状态:</th><td>${getStatusBadge(details.status)}</td></tr>
-                        <tr><th>耗时:</th><td>${details.details?.execution_time ? (details.details.execution_time).toFixed(2) + '秒' : '未知'}</td></tr>
+                        <tr><th>耗时:</th><td>${durationDisplay}</td></tr>
                     </table>
                 </div>
                 <div class="col-md-6">
@@ -1768,11 +1797,11 @@
         schedulerData.errors.forEach(error => {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${formatDateTime(error.timestamp)}</td>
+                <td>${formatDateTime(error.start_time || error.timestamp)}</td>
                 <td>${getTaskTypeLabel(error.task_type)}</td>
-                <td class="text-truncate" style="max-width: 400px;" title="${error.message}">${error.message}</td>
+                <td class="text-truncate" style="max-width: 400px;" title="${error.message || error.error_message}">${error.message || error.error_message}</td>
                 <td>
-                    <button class="btn btn-sm btn-outline-info" onclick="showTaskDetails('${error.timestamp}')">
+                    <button class="btn btn-sm btn-outline-info" onclick="showTaskDetails(${error.id})">
                         <i class="bi bi-eye"></i> 详情
                     </button>
                 </td>
@@ -1949,10 +1978,13 @@
     function getTaskTypeLabel(taskType) {
         const labels = {
             'crawl_sources': '新闻源抓取',
-            'event_groups': '事件分组生成',
+            'event_groups': '事件分组生成', 
             'cache_cleanup': '缓存清理',
             'config': '配置更新',
-            'scheduler': '调度器控制'
+            'scheduler': '调度器控制',
+            'system': '系统操作',
+            'test': '测试任务',
+            'test_display': '显示测试'
         };
         return labels[taskType] || taskType;
     }

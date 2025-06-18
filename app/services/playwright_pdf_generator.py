@@ -36,14 +36,28 @@ class PlaywrightPDFGenerator:
             
             # 使用Playwright生成PDF
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--font-render-hinting=none',
+                        '--disable-font-subpixel-positioning',
+                        '--disable-web-security',
+                        '--allow-file-access-from-files'
+                    ]
+                )
                 page = await browser.new_page()
+                
+                # 设置更好的字体渲染
+                await page.emulate_media(media='print')
                 
                 # 设置页面内容
                 await page.set_content(html_content)
                 
                 # 等待页面加载完成（包括字体和样式）
                 await page.wait_for_load_state('networkidle')
+                
+                # 额外等待，确保字体完全加载
+                await page.wait_for_timeout(2000)
                 
                 # 生成PDF
                 await page.pdf(
@@ -56,7 +70,8 @@ class PlaywrightPDFGenerator:
                         'left': '2cm'
                     },
                     print_background=True,
-                    display_header_footer=False
+                    display_header_footer=False,
+                    prefer_css_page_size=True
                 )
                 
                 await browser.close()
@@ -73,6 +88,9 @@ class PlaywrightPDFGenerator:
     
     def _create_html_content(self, digest):
         """创建用于PDF生成的HTML内容"""
+        # 预处理Markdown内容，规范化缩进以确保正确的嵌套列表结构
+        md_content = self._normalize_markdown_indentation(digest.content or '')
+        
         # 将Markdown内容转换为HTML
         md = markdown.Markdown(
             extensions=[
@@ -89,10 +107,10 @@ class PlaywrightPDFGenerator:
             }
         )
         
-        html_content = md.convert(digest.content or '')
+        html_content = md.convert(md_content)
         
-        # 渲染PDF模板
-        template = template_env.get_template("pdf_github_template.html")
+        # 渲染PDF模板 - 使用Typora GitHub主题样式
+        template = template_env.get_template("pdf_github_template_typora.html")
         
         return template.render(
             title=digest.title,
@@ -100,6 +118,29 @@ class PlaywrightPDFGenerator:
             content=html_content,
             fonts_dir=str(self.fonts_dir)
         )
+    
+    def _normalize_markdown_indentation(self, md_content):
+        """规范化Markdown缩进，确保列表结构正确"""
+        import re
+        
+        lines = md_content.split('\n')
+        normalized_lines = []
+        
+        for line in lines:
+            # 检查是否是列表项的子项（以"- "开头，前面有空格）
+            if re.match(r'^\s+- ', line):
+                # 统一使用4个空格缩进
+                content = line.lstrip()  # 移除所有前导空格
+                normalized_line = '    ' + content  # 添加4个空格
+                normalized_lines.append(normalized_line)
+                logger.debug(f"规范化缩进: '{line.rstrip()}' -> '{normalized_line}'")
+            else:
+                # 其他行保持不变
+                normalized_lines.append(line)
+        
+        result = '\n'.join(normalized_lines)
+        logger.debug(f"Markdown缩进规范化完成，处理了 {len(lines)} 行")
+        return result
 
 # 创建全局实例
 pdf_generator = PlaywrightPDFGenerator()

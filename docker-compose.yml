@@ -29,3 +29,7 @@ services:
 
 volumes:
   redis_data: 
+
+networks:
+  nginx-proxy-manager_npm_network:
+    external: true 

@@ -34,9 +34,10 @@ schedule>=1.2.0
 # 语义相似度计算
 sentence-transformers>=2.2.0
 torch>=1.11.0
+FlagEmbedding>=1.2.0  # BGE模型支持，提供更好的中文语义理解
 
 # 系统监控
 psutil>=5.9.0  # 系统资源监控和进程管理
 
-psycopg2
+psycopg2-binary
 markdown
