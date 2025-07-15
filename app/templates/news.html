@@ -60,13 +60,13 @@
         transition: opacity 0.3s ease;
     }
     
+    /* 移除悬停效果 */
     .news-card:hover {
-        transform: translateY(-8px) scale(1.02);
-        box-shadow: var(--shadow-xl);
+        /* 取消悬停时的变换和阴影效果 */
     }
     
     .news-card:hover::before {
-        opacity: 1;
+        /* 取消悬停时的蓝色条显示 */
     }
     
     .news-card.selected {
@@ -324,7 +324,7 @@
     .progress-bar-container {
         flex: 1;
         height: 8px;
-        background: rgba(226, 232, 240, 0.6);
+        background: rgba(209, 213, 219, 0.8);
         border-radius: var(--radius-lg);
         margin: 0 1.5rem;
         overflow: hidden;
@@ -333,29 +333,16 @@
     
     .progress-bar {
         height: 100%;
-        background: var(--gradient-info);
+        background: linear-gradient(90deg, #ffffff 0%, #f0fdf4 30%, #bbf7d0 70%, #86efac 100%);
         border-radius: var(--radius-lg);
         transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         width: 0%;
         position: relative;
-        overflow: hidden;
+        /* 添加微妙的阴影增强立体感 */
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
     }
     
-    .progress-bar::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-        animation: shimmer 2s infinite;
-    }
-    
-    @keyframes shimmer {
-        0% { left: -100%; }
-        100% { left: 100%; }
-    }
+    /* 移除闪烁动画效果 */
     
     .progress-text {
         font-weight: 700;
@@ -363,9 +350,10 @@
         min-width: 140px;
         text-align: center;
         font-size: 0.875rem;
-        background: rgba(37, 99, 235, 0.1);
+        background: rgba(134, 239, 172, 0.15);
         padding: 0.5rem 1rem;
         border-radius: var(--radius-lg);
+        border: 1px solid rgba(134, 239, 172, 0.3);
     }
     
     .scroll-hint {
@@ -385,17 +373,63 @@
     }
     
     .news-card .card-title {
-        font-size: 1.125rem;
+        font-size: 1.25rem;
         font-weight: 700;
-        line-height: 1.4;
-        margin-bottom: 1rem;
+        line-height: 1.5;
+        margin-bottom: 1.25rem;
         color: #1f2937;
+        word-wrap: break-word;
+        hyphens: auto;
+        /* 改善标题可读性 */
+        letter-spacing: -0.025em;
+        font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
     }
     
     .card-text {
-        color: var(--secondary-color);
-        line-height: 1.6;
-        font-size: 0.925rem;
+        color: #1f2937;
+        line-height: 1.7;
+        font-size: 1rem;
+        margin-bottom: 0;
+        /* 改善总结可读性 */
+        letter-spacing: 0.01em;
+        word-spacing: 0.1em;
+        font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        /* 更好的文本渲染 */
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+    
+    /* 总结文本的优化样式 */
+    .card-text.summary-text {
+        font-size: 1.05rem;
+        line-height: 1.75;
+        color: #111827;
+        margin-top: 0.5rem;
+        text-align: justify;
+        text-justify: inter-ideograph;
+    }
+    
+    /* 添加阅读指示器 */
+    .reading-indicator {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 4px;
+        background: linear-gradient(180deg, transparent 0%, var(--primary-color) 20%, var(--primary-color) 80%, transparent 100%);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        border-radius: 0 2px 2px 0;
+    }
+    
+    .news-card:hover .reading-indicator {
+        /* 取消悬停时的阅读指示器显示 */
+    }
+    
+    .news-card.selected .reading-indicator {
+        opacity: 1;
+        background: linear-gradient(180deg, transparent 0%, var(--success-color) 20%, var(--success-color) 80%, transparent 100%);
     }
     
     /* 现代化事件组样式 */
@@ -411,8 +445,7 @@
     }
     
     .event-group:hover {
-        transform: translateY(-4px);
-        box-shadow: var(--shadow-xl);
+        /* 取消事件分组的悬停效果 */
     }
     
     .event-header {
@@ -427,7 +460,7 @@
     }
     
     .event-header:hover {
-        background: rgba(37, 99, 235, 0.1);
+        /* 取消事件头部的悬停背景变化 */
     }
     
     .event-label {
@@ -497,9 +530,29 @@
     .primary-news {
         background: rgba(34, 197, 94, 0.05);
         border-left: 4px solid var(--success-color);
-        padding: 1.5rem;
+        padding: 1.75rem;
         border-radius: var(--radius-lg);
         margin-bottom: 1.5rem;
+        position: relative;
+    }
+    
+    .primary-news h5 {
+        font-size: 1.2rem;
+        font-weight: 700;
+        line-height: 1.5;
+        margin-bottom: 1rem;
+        color: #1f2937;
+        letter-spacing: -0.025em;
+        font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+    
+    .primary-news p {
+        font-size: 1rem;
+        line-height: 1.75;
+        color: #111827;
+        margin-bottom: 1rem;
+        font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        text-rendering: optimizeLegibility;
     }
     
     .related-news {
@@ -516,9 +569,7 @@
     }
     
     .related-news-item:hover {
-        background: rgba(255, 255, 255, 0.9);
-        transform: translateX(8px);
-        box-shadow: var(--shadow-md);
+        /* 取消相关新闻项的悬停效果 */
     }
     
     /* 专业化底部操作栏 */
@@ -674,6 +725,17 @@
             padding: 1.5rem;
         }
         
+        .news-card .card-title {
+            font-size: 1.15rem;
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+        
+        .card-text.summary-text {
+            font-size: 1rem;
+            line-height: 1.65;
+        }
+        
         .filter-card .card-body {
             padding: 1.5rem;
         }
@@ -687,6 +749,15 @@
         
         .event-content {
             padding: 1.5rem;
+        }
+        
+        .primary-news {
+            padding: 1.5rem;
+        }
+        
+        .primary-news h5 {
+            font-size: 1.1rem;
+            line-height: 1.6;
         }
         
         .progress-indicator {
@@ -762,7 +833,7 @@
     }
     
     .news-card .card-text {
-        color: #6c757d;
+        color: #1f2937;
         line-height: 1.5;
     }
     
@@ -818,7 +889,7 @@
     }
     
     .event-group:hover {
-        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+        /* 取消事件分组的悬停阴影效果 */
     }
     
     .event-header {
@@ -832,7 +903,7 @@
     }
     
     .event-header:hover {
-        background-color: #e9ecef;
+        /* 取消事件头部的悬停背景变化 */
     }
     
     .event-label {
@@ -1654,24 +1725,31 @@
 
         card.innerHTML = `
             <div class="card news-card ${isSelected ? 'selected' : ''} ${cardExtraClasses}" data-id="${news.id}">
+                <div class="reading-indicator"></div>
                 <div class="card-body">
                     <span class="category-badge">${getCategoryBadge(news.category)}</span>
                     <h5 class="card-title">
                         ${titlePrefix}${news.generated_title || news.title}
                         ${news.summary_source ? 
                           (news.summary_source === 'original' 
-                            ? '<i class="fas fa-quote-left text-info" title="来自原文摘要"></i>' 
-                            : '<i class="fas fa-robot text-primary" title="AI生成总结"></i>') 
+                            ? '<i class="fas fa-quote-left text-info ms-2" title="来自原文摘要"></i>' 
+                            : '<i class="fas fa-robot text-primary ms-2" title="AI生成总结"></i>') 
                           : ''}
                     </h5>
-                    <p class="card-text">${truncateSummary(news.generated_summary || news.summary, 100)}</p>
+                    <p class="card-text summary-text">${truncateSummary(news.generated_summary || news.summary, 150)}</p>
                 </div>
                 <div class="card-footer bg-transparent">
-                    <small class="text-muted">来源: ${news.source_name || '未知来源'} | ${formatDate(news.created_at)}</small>
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <small class="text-muted">来源: ${news.source_name || '未知来源'} | ${formatDate(news.created_at)}</small>
+                        ${news.tokens_usage && news.is_processed ? 
+                            `<small class="text-primary" title="此文章的AI处理消耗了 ${calculateTotalTokens(news.tokens_usage)} 个tokens">
+                                <i class="bi bi-cpu"></i> ${calculateTotalTokens(news.tokens_usage)} tokens
+                            </small>` : ''}
+                    </div>
                     <div>
-                        <button class="btn btn-sm btn-outline-primary btn-view" data-id="${news.id}">查看</button>
+                        <button class="btn btn-sm btn-outline-primary btn-view" data-id="${news.id}">查看详情</button>
                         <button class="btn btn-sm ${isSelected ? 'btn-success' : 'btn-outline-success'} btn-select" data-id="${news.id}">
-                            ${isSelected ? '已选择' : '选择'}
+                            ${isSelected ? '✓ 已选择' : '选择'}
                         </button>
                     </div>
                 </div>
@@ -1951,11 +2029,34 @@
         return date.toLocaleString();
     }
     
-    // 辅助函数 - 截取摘要文本（控制在100字以内）
-    function truncateSummary(text, maxLength = 100) {
+    // 辅助函数 - 智能截取摘要文本
+    function truncateSummary(text, maxLength = 150) {
         if (!text) return '';
         if (text.length <= maxLength) return text;
-        return text.substring(0, maxLength) + '...';
+        
+        // 尝试在句号、感叹号、问号处截断
+        const sentenceEnders = ['。', '！', '？', '.', '!', '?'];
+        let bestCutoff = maxLength;
+        
+        for (let i = Math.min(maxLength - 20, text.length - 1); i >= Math.max(maxLength - 50, 0); i--) {
+            if (sentenceEnders.includes(text[i])) {
+                bestCutoff = i + 1;
+                break;
+            }
+        }
+        
+        // 如果没找到合适的句号位置，尝试在逗号或空格处截断
+        if (bestCutoff === maxLength) {
+            const softBreaks = ['，', '、', ',', ' ', '；', ';'];
+            for (let i = Math.min(maxLength - 10, text.length - 1); i >= Math.max(maxLength - 30, 0); i--) {
+                if (softBreaks.includes(text[i])) {
+                    bestCutoff = i + 1;
+                    break;
+                }
+            }
+        }
+        
+        return text.substring(0, bestCutoff).trim() + '...';
     }
     
     // 辅助函数 - 获取分类标签
@@ -2058,18 +2159,26 @@
                             ${group.primary.generated_title || group.primary.title}
                             <span class="badge bg-primary">主要新闻</span>
                         </h5>
-                        <p>${(group.primary.generated_summary || group.primary.summary).substring(0, 200)}...</p>
+                        <p>${truncateSummary(group.primary.generated_summary || group.primary.summary, 200)}</p>
                         <div class="mt-2">
-                            <small class="text-muted">
-                                来源: ${group.primary.source_name || '未知来源'} | ${formatDate(group.primary.created_at)}
-                            </small>
-                            <button class="btn btn-sm btn-outline-primary float-end me-2" onclick="viewNews(${group.primary.id})">
-                                查看详情
-                            </button>
-                            <button class="btn btn-sm ${selectedNews.has(group.primary.id) ? 'btn-success' : 'btn-outline-success'} float-end me-2" 
-                                    data-news-id="${group.primary.id}" onclick="toggleSelectNews(${group.primary.id})">
-                                ${selectedNews.has(group.primary.id) ? '已选择' : '选择'}
-                            </button>
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <small class="text-muted">
+                                    来源: ${group.primary.source_name || '未知来源'} | ${formatDate(group.primary.created_at)}
+                                </small>
+                                ${group.primary.tokens_usage && group.primary.is_processed ? 
+                                    `<small class="text-primary" title="此文章的AI处理消耗了 ${calculateTotalTokens(group.primary.tokens_usage)} 个tokens">
+                                        <i class="bi bi-cpu"></i> ${calculateTotalTokens(group.primary.tokens_usage)} tokens
+                                    </small>` : ''}
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-outline-primary me-2" onclick="viewNews(${group.primary.id})">
+                                    查看详情
+                                </button>
+                                <button class="btn btn-sm ${selectedNews.has(group.primary.id) ? 'btn-success' : 'btn-outline-success'}" 
+                                        data-news-id="${group.primary.id}" onclick="toggleSelectNews(${group.primary.id})">
+                                    ${selectedNews.has(group.primary.id) ? '已选择' : '选择'}
+                                </button>
+                            </div>
                         </div>
                     </div>
                     
@@ -2080,9 +2189,15 @@
                                 <div class="related-news-item">
                                     <div class="similarity-badge">${Math.round(group.similarity_scores[news.id] * 100)}% 相似</div>
                                     <h6>${news.generated_title || news.title}</h6>
-                                    <small class="text-muted">
-                                        来源: ${news.source_name || '未知来源'} | ${formatDate(news.created_at)}
-                                    </small>
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <small class="text-muted">
+                                            来源: ${news.source_name || '未知来源'} | ${formatDate(news.created_at)}
+                                        </small>
+                                        ${news.tokens_usage && news.is_processed ? 
+                                            `<small class="text-primary" title="此文章的AI处理消耗了 ${calculateTotalTokens(news.tokens_usage)} 个tokens">
+                                                <i class="bi bi-cpu"></i> ${calculateTotalTokens(news.tokens_usage)} tokens
+                                            </small>` : ''}
+                                    </div>
                                     <div class="mt-2">
                                         <button class="btn btn-sm btn-outline-primary me-2" onclick="viewNews(${news.id})">
                                             查看
@@ -2113,19 +2228,31 @@
         newsCard.className = 'col-12 mb-3';
         newsCard.innerHTML = `
             <div class="card news-card ${isSelected ? 'selected' : ''}" data-id="${news.id}">
+                <div class="reading-indicator"></div>
                 <div class="card-body">
                     <span class="category-badge">${getCategoryBadge(news.category)}</span>
                     <h5 class="card-title">
                         ${news.generated_title || news.title}
+                        ${news.summary_source ? 
+                          (news.summary_source === 'original' 
+                            ? '<i class="fas fa-quote-left text-info ms-2" title="来自原文摘要"></i>' 
+                            : '<i class="fas fa-robot text-primary ms-2" title="AI生成总结"></i>') 
+                          : ''}
                     </h5>
-                    <p class="card-text">${truncateSummary(news.generated_summary || news.summary, 100)}</p>
+                    <p class="card-text summary-text">${truncateSummary(news.generated_summary || news.summary, 150)}</p>
                 </div>
                 <div class="card-footer bg-transparent">
-                    <small class="text-muted">来源: ${news.source_name || '未知来源'} | ${formatDate(news.created_at)}</small>
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <small class="text-muted">来源: ${news.source_name || '未知来源'} | ${formatDate(news.created_at)}</small>
+                        ${news.tokens_usage && news.is_processed ? 
+                            `<small class="text-primary" title="此文章的AI处理消耗了 ${calculateTotalTokens(news.tokens_usage)} 个tokens">
+                                <i class="bi bi-cpu"></i> ${calculateTotalTokens(news.tokens_usage)} tokens
+                            </small>` : ''}
+                    </div>
                     <div>
-                        <button class="btn btn-sm btn-outline-primary btn-view" onclick="viewNews(${news.id})">查看</button>
+                        <button class="btn btn-sm btn-outline-primary btn-view" onclick="viewNews(${news.id})">查看详情</button>
                         <button class="btn btn-sm ${isSelected ? 'btn-success' : 'btn-outline-success'} btn-select" data-news-id="${news.id}" onclick="toggleSelectNews(${news.id})">
-                            ${isSelected ? '已选择' : '选择'}
+                            ${isSelected ? '✓ 已选择' : '选择'}
                         </button>
                     </div>
                 </div>
@@ -2185,6 +2312,19 @@
         }
         
         statsEl.textContent = `当前显示 ${totalNews} 条新闻 (${modeText})`;
+    }
+
+    // 辅助函数 - 计算总token数量
+    function calculateTotalTokens(tokensUsage) {
+        if (!tokensUsage) return 0;
+        
+        let totalTokens = 0;
+        for (const [type, usage] of Object.entries(tokensUsage)) {
+            if (usage && typeof usage === 'object') {
+                totalTokens += usage.total_tokens || 0;
+            }
+        }
+        return totalTokens;
     }
 
     // 辅助函数 - 格式化tokens使用信息

@@ -1,46 +1,430 @@
 {% extends "base.html" %}
 
-{% block title %}首页 - 每日安全快报系统{% endblock %}
+{% block title %}仪表板 - 每日安全快报系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .hero-section {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 4rem 0;
+        border-radius: 15px;
+        margin-bottom: 3rem;
+    }
+    
+    .hero-content {
+        text-align: center;
+    }
+    
+    .hero-title {
+        font-size: 3rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .hero-subtitle {
+        font-size: 1.25rem;
+        opacity: 0.9;
+        margin-bottom: 2rem;
+    }
+    
+    .stats-card {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        border: none;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        height: 100%;
+    }
+    
+    .stats-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+    }
+    
+    .stats-label-large {
+        font-size: 1rem;
+        font-weight: 500;
+        color: #4a5568;
+        margin-bottom: 1rem;
+    }
+    
+    .stats-number {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #2d3748;
+        margin: 0;
+    }
+    
+    .stats-label {
+        color: #718096;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin: 0;
+    }
+    
+    .feature-card {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+        border: none;
+        transition: all 0.3s ease;
+        height: 100%;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .feature-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+    }
+    
+    .feature-card::before {
+        display: none;
+    }
+    
+    .feature-label {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #667eea;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 1rem;
+    }
+    
+    .feature-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #2d3748;
+        margin-bottom: 1rem;
+    }
+    
+    .feature-description {
+        color: #718096;
+        line-height: 1.6;
+        margin-bottom: 1.5rem;
+    }
+    
+    .feature-link {
+        color: #667eea;
+        text-decoration: none;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.3s ease;
+    }
+    
+    .feature-link:hover {
+        color: #5a67d8;
+        gap: 0.75rem;
+    }
+    
+    .quick-actions {
+        background: #f8fafc;
+        border-radius: 15px;
+        padding: 2rem;
+        margin-top: 3rem;
+    }
+    
+    .quick-actions-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #2d3748;
+        margin-bottom: 1.5rem;
+        text-align: center;
+    }
+    
+    .action-btn {
+        background: white;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 1rem 1.5rem;
+        color: #4a5568;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        transition: all 0.3s ease;
+        width: 100%;
+        margin-bottom: 1rem;
+    }
+    
+    .action-btn:hover {
+        border-color: #667eea;
+        color: #667eea;
+        background: #f7fafc;
+        transform: translateX(5px);
+    }
+    
+    .action-label {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: #667eea;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-right: 1rem;
+        min-width: 60px;
+        text-align: left;
+    }
+    
+    .action-content {
+        flex: 1;
+        text-align: left;
+    }
+    
+    .action-title {
+        font-weight: 600;
+        margin: 0;
+        font-size: 1rem;
+    }
+    
+    .action-subtitle {
+        font-size: 0.875rem;
+        opacity: 0.7;
+        margin: 0;
+    }
+    
+    /* 颜色变量 */
+    :root {
+        --accent-color: #667eea;
+        --accent-color-dark: #5a67d8;
+        --success-color: #48bb78;
+        --warning-color: #ed8936;
+        --info-color: #4299e1;
+        --purple-color: #9f7aea;
+    }
+    
+    /* 响应式设计 */
+    @media (max-width: 768px) {
+        .hero-title {
+            font-size: 2rem;
+        }
+        
+        .hero-subtitle {
+            font-size: 1rem;
+        }
+        
+        .stats-number {
+            font-size: 2rem;
+        }
+        
+        .action-btn {
+            padding: 0.875rem 1rem;
+        }
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="jumbotron p-5 bg-light rounded">
-    <h1 class="display-4">每日安全快报系统</h1>
-    <p class="lead">自动收集、处理和生成网络安全新闻摘要，帮助您跟踪最新安全动态。</p>
-    <hr class="my-4">
-    <p>每天从多个来源获取最新网络安全信息，使用AI自动处理并生成摘要。</p>
-    <div class="d-grid gap-2 d-md-flex justify-content-md-start">
-        <a href="/news" class="btn btn-primary btn-lg me-md-2">查看今日新闻</a>
-        <a href="/digest" class="btn btn-secondary btn-lg">历史快报</a>
+<!-- 英雄区域 -->
+<div class="hero-section">
+    <div class="container">
+        <div class="hero-content">
+            <h1 class="hero-title">每日安全快报系统</h1>
+            <p class="hero-subtitle">智能化网络安全情报收集与分析平台</p>
+            <p class="hero-subtitle">自动收集、AI处理、智能分析、一键生成专业安全快报</p>
+        </div>
     </div>
 </div>
 
-<div class="row mt-5">
-    <div class="col-md-4">
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">查看今日新闻</h5>
-                <p class="card-text">浏览今天收集的所有网络安全新闻，按类别过滤并选择重要内容纳入快报。</p>
-                <a href="/news" class="btn btn-primary">立即查看</a>
-            </div>
+<!-- 统计概览 -->
+<div class="row mb-5" id="statsContainer">
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="stats-card">
+            <div class="stats-label-large">今日新闻</div>
+            <h3 class="stats-number" id="todayNewsCount">--</h3>
+            <p class="stats-label">条新收集的安全资讯</p>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">生成安全快报</h5>
-                <p class="card-text">从今日新闻中选择重要内容，一键生成分类整理的安全快报。</p>
-                <a href="/news" class="btn btn-primary">开始生成</a>
-            </div>
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="stats-card">
+            <div class="stats-label-large">历史快报</div>
+            <h3 class="stats-number" id="totalDigestsCount">--</h3>
+            <p class="stats-label">份已生成的快报</p>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">管理新闻源</h5>
-                <p class="card-text">添加、编辑或删除新闻来源，配置抓取周期和处理规则。</p>
-                <a href="/admin" class="btn btn-primary">进入管理</a>
-            </div>
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="stats-card">
+            <div class="stats-label-large">活跃源</div>
+            <h3 class="stats-number" id="activeSourcesCount">--</h3>
+            <p class="stats-label">个正在运行的新闻源</p>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-4">
+        <div class="stats-card">
+            <div class="stats-label-large">系统状态</div>
+            <h3 class="stats-number" id="systemStatus">--</h3>
+            <p class="stats-label">当前运行状态</p>
         </div>
     </div>
 </div>
+
+<!-- 功能模块 -->
+<div class="row mb-5">
+    <div class="col-lg-4 col-md-6 mb-4">
+        <div class="feature-card">
+            <div class="feature-label">新闻管理</div>
+            <h4 class="feature-title">今日安全资讯</h4>
+            <p class="feature-description">
+                浏览今日收集的网络安全新闻，按类别筛选重要内容，进行智能分类和标记处理。
+            </p>
+            <a href="/news" class="feature-link">
+                查看今日新闻 <i class="bi bi-arrow-right"></i>
+            </a>
+        </div>
+    </div>
+    
+    <div class="col-lg-4 col-md-6 mb-4">
+        <div class="feature-card">
+            <div class="feature-label">快报中心</div>
+            <h4 class="feature-title">安全快报管理</h4>
+            <p class="feature-description">
+                管理生成的安全快报，编辑内容，下载PDF版本，查看历史快报档案。
+            </p>
+            <a href="/digest" class="feature-link">
+                进入快报中心 <i class="bi bi-arrow-right"></i>
+            </a>
+        </div>
+    </div>
+    
+    <div class="col-lg-4 col-md-6 mb-4">
+        <div class="feature-card">
+            <div class="feature-label">系统管理</div>
+            <h4 class="feature-title">配置与监控</h4>
+            <p class="feature-description">
+                配置新闻源，管理抓取规则，调整AI处理参数，监控系统运行状态。
+            </p>
+            <a href="/admin" class="feature-link">
+                系统管理 <i class="bi bi-arrow-right"></i>
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- 快速操作 -->
+<div class="quick-actions">
+    <h3 class="quick-actions-title">快速操作</h3>
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <a href="/news" class="action-btn">
+                <div class="action-label">生成</div>
+                <div class="action-content">
+                    <div class="action-title">生成新快报</div>
+                    <div class="action-subtitle">从今日新闻中生成安全快报</div>
+                </div>
+            </a>
+        </div>
+        
+        <div class="col-md-6 mb-3">
+            <a href="/digest" class="action-btn">
+                <div class="action-label">查看</div>
+                <div class="action-content">
+                    <div class="action-title">查看最新快报</div>
+                    <div class="action-subtitle">浏览最近生成的快报内容</div>
+                </div>
+            </a>
+        </div>
+        
+        <div class="col-md-6 mb-3">
+            <a href="/admin/sources" class="action-btn">
+                <div class="action-label">配置</div>
+                <div class="action-content">
+                    <div class="action-title">管理新闻源</div>
+                    <div class="action-subtitle">添加或配置新闻采集源</div>
+                </div>
+            </a>
+        </div>
+        
+        <div class="col-md-6 mb-3">
+            <a href="/admin/scheduler" class="action-btn">
+                <div class="action-label">调度</div>
+                <div class="action-content">
+                    <div class="action-title">任务调度</div>
+                    <div class="action-subtitle">查看和管理定时任务</div>
+                </div>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboardStats();
+});
+
+// 加载仪表板统计数据
+function loadDashboardStats() {
+    // 今日新闻数量
+    fetch('/api/news/today/count')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('todayNewsCount').textContent = data.count || 0;
+        })
+        .catch(error => {
+            console.error('Error loading today news count:', error);
+            document.getElementById('todayNewsCount').textContent = '0';
+        });
+    
+    // 历史快报数量
+    fetch('/api/digest/count')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('totalDigestsCount').textContent = data.count || 0;
+        })
+        .catch(error => {
+            console.error('Error loading digests count:', error);
+            document.getElementById('totalDigestsCount').textContent = '0';
+        });
+    
+    // 活跃新闻源数量
+    fetch('/api/sources/active/count')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('activeSourcesCount').textContent = data.count || 0;
+        })
+        .catch(error => {
+            console.error('Error loading sources count:', error);
+            document.getElementById('activeSourcesCount').textContent = '0';
+        });
+    
+    // 系统状态
+    fetch('/api/system/status')
+        .then(response => response.json())
+        .then(data => {
+            const statusElement = document.getElementById('systemStatus');
+            if (data.status === 'healthy') {
+                statusElement.textContent = '正常';
+            } else if (data.status === 'degraded') {
+                statusElement.textContent = '降级';
+            } else {
+                statusElement.textContent = '异常';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading system status:', error);
+            document.getElementById('systemStatus').textContent = '未知';
+        });
+}
+
+// 添加平滑滚动效果
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+            target.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+        }
+    });
+});
+</script>
 {% endblock %} 

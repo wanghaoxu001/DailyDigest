@@ -9,7 +9,7 @@
         background-color: #fff;
         min-height: 500px;
         overflow-y: auto;
-        font-family: "Open Sans", "Clear Sans", "Helvetica Neue", Helvetica, Arial, 'Segoe UI Emoji', sans-serif;
+        font-family: 'Source Han Sans', 'Noto Sans CJK SC', 'Microsoft YaHei', 'WenQuanYi Micro Hei', "Open Sans", "Clear Sans", "Helvetica Neue", Helvetica, Arial, 'Segoe UI Emoji', sans-serif;
         color: rgb(51, 51, 51);
         line-height: 1.6;
     }
@@ -24,6 +24,7 @@
     
     .CodeMirror {
         height: 500px !important;
+        font-family: 'Source Han Sans', 'Noto Sans CJK SC', 'Microsoft YaHei', 'WenQuanYi Micro Hei', 'Consolas', 'Monaco', 'Courier New', monospace !important;
     }
     
     .editor-preview-section {
@@ -49,6 +50,9 @@
         padding: 10px 15px;
         border-bottom: 1px solid #dee2e6;
         font-weight: bold;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
     
     .preview-content {
@@ -56,10 +60,402 @@
         height: calc(100% - 50px);
         overflow-y: auto;
     }
+
+    /* 编辑模式选择器 */
+    .edit-mode-selector {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 4px;
+        margin-bottom: 15px;
+        display: flex;
+        gap: 2px;
+    }
+
+    .edit-mode-btn {
+        flex: 1;
+        border: none;
+        background: transparent;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+        cursor: pointer;
+    }
+
+    .edit-mode-btn.active {
+        background: white;
+        color: #2563eb;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .edit-mode-btn:not(.active) {
+        color: #64748b;
+    }
+
+    .edit-mode-btn:hover:not(.active) {
+        background: #e2e8f0;
+    }
+
+    /* 可视化编辑器样式 */
+    .visual-editor {
+        min-height: 500px;
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+        padding: 20px;
+        font-family: 'Source Han Sans', 'Noto Sans CJK SC', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif;
+    }
+
+    .digest-title-editor {
+        border: none;
+        font-size: 28px;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 30px;
+        background: transparent;
+        width: 100%;
+        padding: 10px;
+        border-bottom: 2px solid transparent;
+        transition: border-color 0.2s;
+    }
+
+    .digest-title-editor:focus {
+        outline: none;
+        border-bottom-color: #2563eb;
+    }
+
+    .category-section {
+        margin-bottom: 30px;
+        border-bottom: 2px solid #e5e7eb;
+        padding-bottom: 20px;
+    }
+
+    .category-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+
+    .category-title {
+        font-size: 20px;
+        font-weight: bold;
+        color: #1f2937;
+        margin: 0;
+    }
+
+    .add-news-btn {
+        background: #2563eb;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 6px 12px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    .add-news-btn:hover {
+        background: #1d4ed8;
+    }
+
+    .news-item {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 12px;
+        transition: all 0.2s;
+        position: relative;
+    }
+
+    .news-item:hover {
+        border-color: #2563eb;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1);
+    }
+
+    .news-title-input {
+        border: none;
+        font-size: 16px;
+        font-weight: 600;
+        background: transparent;
+        width: 100%;
+        margin-bottom: 8px;
+        padding: 8px;
+        border-radius: 4px;
+        transition: background-color 0.2s;
+    }
+
+    .news-title-input:focus {
+        outline: none;
+        background: white;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+    }
+
+    .news-summary-input {
+        border: none;
+        background: transparent;
+        width: 100%;
+        resize: vertical;
+        min-height: 60px;
+        padding: 8px;
+        border-radius: 4px;
+        font-size: 14px;
+        line-height: 1.5;
+        transition: background-color 0.2s;
+    }
+
+    .news-summary-input:focus {
+        outline: none;
+        background: white;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+    }
+
+    .news-category-select {
+        border: 1px solid #d1d5db;
+        background: transparent;
+        border-radius: 4px;
+        font-size: 13px;
+        transition: all 0.2s;
+    }
+
+    .news-category-select:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+        background: white;
+    }
+
+    .news-item .form-label {
+        margin-bottom: 4px;
+        font-size: 11px;
+        font-weight: 500;
+    }
+
+    .news-actions {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        display: flex;
+        gap: 6px;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+
+    .news-item:hover .news-actions {
+        opacity: 1;
+    }
+
+    .news-action-btn {
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 4px;
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 12px;
+    }
+
+    .news-action-btn:hover {
+        background: #f3f4f6;
+    }
+
+    .news-action-btn.delete:hover {
+        background: #fef2f2;
+        border-color: #fca5a5;
+        color: #dc2626;
+    }
+
+    .empty-category {
+        color: #6b7280;
+        font-style: italic;
+        text-align: center;
+        padding: 20px;
+        background: #f9fafb;
+        border: 2px dashed #d1d5db;
+        border-radius: 8px;
+    }
+
+    /* 移动设备切换按钮 */
+    .mobile-toggle-buttons {
+        display: none;
+        margin-bottom: 15px;
+    }
+    
+    .mobile-toggle-buttons .btn {
+        flex: 1;
+    }
+    
+    /* 移动设备响应式设计 */
+    @media (max-width: 768px) {
+        /* 在移动设备上显示切换按钮 */
+        .mobile-toggle-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        /* 编辑器和预览区域在移动设备上垂直排列 */
+        .editor-preview-section {
+            flex-direction: column;
+            height: auto;
+            min-height: 70vh;
+        }
+        
+        /* 初始状态下隐藏预览，只显示编辑器 */
+        .preview-section {
+            display: none;
+        }
+        
+        .editor-section.mobile-hidden {
+            display: none;
+        }
+        
+        .preview-section.mobile-visible {
+            display: block;
+        }
+        
+        /* 调整编辑器高度 */
+        .CodeMirror {
+            height: 60vh !important;
+        }
+        
+        /* 预览区域高度 */
+        .preview-section {
+            min-height: 60vh;
+        }
+        
+        .preview-content {
+            height: calc(60vh - 50px);
+        }
+        
+        /* 可视化编辑器移动优化 */
+        .visual-editor {
+            padding: 15px;
+            min-height: 60vh;
+        }
+
+        .digest-title-editor {
+            font-size: 24px;
+        }
+
+        .category-title {
+            font-size: 18px;
+        }
+
+        .news-actions {
+            opacity: 1; /* 移动设备上始终显示操作按钮 */
+        }
+        
+        /* 模态框在移动设备上全屏显示 */
+        .modal-dialog.modal-xl {
+            margin: 0;
+            max-width: 100%;
+            height: 100vh;
+        }
+        
+        .modal-content {
+            height: 100%;
+            border-radius: 0;
+        }
+        
+        .modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        
+        /* 优化表单标签显示 */
+        .editor-section .form-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+    }
+    
+    /* 平板设备优化 */
+    @media (min-width: 769px) and (max-width: 1024px) {
+        .editor-preview-section {
+            height: 500px;
+        }
+        
+        .CodeMirror {
+            height: 400px !important;
+        }
+        
+        .preview-content {
+            height: calc(100% - 50px);
+        }
+    }
+    
+    /* 触摸设备优化 */
+    @media (max-width: 768px) {
+        /* 增加按钮触摸区域 */
+        .mobile-toggle-buttons .btn {
+            padding: 12px 16px;
+            font-size: 16px;
+            touch-action: manipulation;
+        }
+        
+        /* 优化编辑器字体 */
+        .CodeMirror {
+            font-family: 'Source Han Sans', 'Noto Sans CJK SC', 'Microsoft YaHei', 'WenQuanYi Micro Hei', 'Consolas', 'Monaco', 'Courier New', monospace !important;
+            font-size: 14px !important;
+            line-height: 1.6 !important;
+        }
+        
+        /* 优化预览字体 */
+        .github-preview {
+            font-family: 'Source Han Sans', 'Noto Sans CJK SC', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif !important;
+            font-size: 14px;
+            line-height: 1.7;
+        }
+        
+        /* 防止意外缩放 */
+        input, textarea, select {
+            font-size: 16px !important;
+        }
+        
+        /* 优化滚动 */
+        .CodeMirror-scroll,
+        .preview-content {
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        /* 改善表单输入体验 */
+        #editDigestTitleInput {
+            font-size: 16px !important;
+            padding: 12px;
+        }
+        
+        /* 调整模态框标题栏高度 */
+        .modal-header {
+            padding: 12px 16px;
+        }
+        
+        .modal-footer {
+            padding: 12px 16px;
+        }
+        
+        /* 改善按钮组布局 */
+        .modal-footer {
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .modal-footer .btn {
+            flex: 1;
+            min-width: 80px;
+        }
+    }
     /* GitHub样式预览 */
     
     .github-preview {
-        font-family: "Open Sans", "Clear Sans", "Helvetica Neue", Helvetica, Arial, 'Segoe UI Emoji', sans-serif;
+        font-family: 'Source Han Sans', 'Noto Sans CJK SC', 'Microsoft YaHei', 'WenQuanYi Micro Hei', "Open Sans", "Clear Sans", "Helvetica Neue", Helvetica, Arial, 'Segoe UI Emoji', sans-serif;
         color: rgb(51, 51, 51);
         line-height: 1.6;
     }
@@ -168,15 +564,70 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">内容</label>
-                        <div class="editor-preview-section">
-                            <div class="editor-section">
-                                <div class="form-label">编辑器</div>
-                                <textarea id="editDigestContent" class="form-control"></textarea>
+                        
+                        <!-- 编辑模式选择器 -->
+                        <div class="edit-mode-selector">
+                            <button type="button" class="edit-mode-btn active" id="btnMarkdownMode">
+                                <i class="bi bi-code-slash"></i> Markdown编辑
+                            </button>
+                            <button type="button" class="edit-mode-btn" id="btnVisualMode">
+                                <i class="bi bi-palette"></i> 可视化编辑
+                            </button>
+                        </div>
+                        
+                        <!-- Markdown编辑模式 -->
+                        <div id="markdownEditSection">
+                            <!-- 移动设备切换按钮 -->
+                            <div class="mobile-toggle-buttons">
+                                <button type="button" class="btn btn-outline-primary active" id="btnShowEditor">
+                                    <i class="bi bi-pencil"></i> 编辑
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" id="btnShowPreview">
+                                    <i class="bi bi-eye"></i> 预览
+                                </button>
                             </div>
-                            <div class="preview-section">
-                                <div class="preview-header">实时预览（GitHub样式）</div>
-                                <div class="preview-content github-preview" id="digestPreview">
-                                    <p class="text-muted">在左侧编辑器中输入内容，这里将显示实时预览...</p>
+                            
+                            <div class="editor-preview-section">
+                                <div class="editor-section" id="editorSection">
+                                    <div class="form-label">
+                                        Markdown编辑器
+                                        <span class="d-none d-md-inline text-muted small">(实时预览在右侧)</span>
+                                    </div>
+                                    <textarea id="editDigestContent" class="form-control"></textarea>
+                                </div>
+                                <div class="preview-section" id="previewSection">
+                                    <div class="preview-header">
+                                        实时预览（GitHub样式）
+                                        <button type="button" class="btn btn-sm btn-outline-primary d-md-none" id="btnBackToEditor">
+                                            <i class="bi bi-arrow-left"></i> 返回编辑
+                                        </button>
+                                    </div>
+                                    <div class="preview-content github-preview" id="digestPreview">
+                                        <p class="text-muted">在编辑器中输入内容，这里将显示实时预览...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 可视化编辑模式 -->
+                        <div id="visualEditSection" style="display: none;">
+                            <div class="visual-editor" id="visualEditor">
+                                <!-- 快报标题 -->
+                                <input type="text" class="digest-title-editor" id="visualDigestTitle" placeholder="快报标题">
+                                
+                                <!-- 分类编辑区域 -->
+                                <div id="categoriesContainer">
+                                    <!-- 分类将通过JavaScript动态生成 -->
+                                </div>
+                                
+                                <!-- 全局添加新闻按钮 -->
+                                <div class="text-center mt-4">
+                                    <button type="button" class="btn btn-primary me-2" id="btnGlobalAddNews">
+                                        <i class="bi bi-plus-circle"></i> 添加新闻
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" id="btnAddCategory">
+                                        <i class="bi bi-folder-plus"></i> 添加自定义分类
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -210,12 +661,82 @@
         </div>
     </div>
 </div>
+
+<!-- 新增新闻模态框 -->
+<div class="modal fade" id="addNewsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加新闻</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addNewsForm">
+                    <div class="mb-3">
+                        <label for="newsCategory" class="form-label">分类</label>
+                        <select class="form-select" id="newsCategory" required>
+                            <option value="">请选择分类</option>
+                            <option value="金融业网络安全事件">一、金融业网络安全事件</option>
+                            <option value="重大网络安全事件">二、重大网络安全事件</option>
+                            <option value="重大数据泄露事件">三、重大数据泄露事件</option>
+                            <option value="重大漏洞风险提示">四、重大漏洞风险提示</option>
+                            <option value="其他">五、其他</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="newsTitle" class="form-label">标题</label>
+                        <input type="text" class="form-control" id="newsTitle" placeholder="请输入新闻标题" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="newsSummary" class="form-label">摘要</label>
+                        <textarea class="form-control" id="newsSummary" rows="4" placeholder="请输入新闻摘要" required></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="btnConfirmAddNews">添加</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %} {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/simplemde@1.11.2/dist/simplemde.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
     let simplemde = null;
     let currentDigestId = null;
+    let currentEditMode = 'markdown'; // 'markdown' 或 'visual'
+    let visualEditorData = null; // 存储可视化编辑器的数据
+
+    // 新闻分类映射
+    const NEWS_CATEGORIES = {
+        '金融业网络安全事件': { 
+            label: '一、金融业网络安全事件', 
+            key: 'financial',
+            color: 'info'
+        },
+        '重大网络安全事件': { 
+            label: '二、重大网络安全事件', 
+            key: 'major',
+            color: 'danger'
+        },
+        '重大数据泄露事件': { 
+            label: '三、重大数据泄露事件', 
+            key: 'leak',
+            color: 'warning'
+        },
+        '重大漏洞风险提示': { 
+            label: '四、重大漏洞风险提示', 
+            key: 'vulnerability',
+            color: 'primary'
+        },
+        '其他': { 
+            label: '五、其他', 
+            key: 'other',
+            color: 'secondary'
+        }
+    };
 
     document.addEventListener('DOMContentLoaded', function() {
         // 加载最新快报
@@ -238,7 +759,202 @@
             // 打开编辑模态框
             editDigest(currentDigestId);
         });
+
+        // 编辑模式切换事件
+        initEditModeToggle();
+
+        // 移动设备切换按钮事件
+        initMobileToggleButtons();
     });
+
+    // 初始化编辑模式切换
+    function initEditModeToggle() {
+        const btnMarkdownMode = document.getElementById('btnMarkdownMode');
+        const btnVisualMode = document.getElementById('btnVisualMode');
+        
+        btnMarkdownMode.addEventListener('click', function() {
+            switchEditMode('markdown');
+        });
+        
+        btnVisualMode.addEventListener('click', function() {
+            switchEditMode('visual');
+        });
+    }
+
+    // 切换编辑模式
+    function switchEditMode(mode) {
+        if (currentEditMode === mode) return;
+        
+        const btnMarkdownMode = document.getElementById('btnMarkdownMode');
+        const btnVisualMode = document.getElementById('btnVisualMode');
+        const markdownSection = document.getElementById('markdownEditSection');
+        const visualSection = document.getElementById('visualEditSection');
+        
+        if (mode === 'visual') {
+            // 切换到可视化编辑模式
+            btnMarkdownMode.classList.remove('active');
+            btnVisualMode.classList.add('active');
+            markdownSection.style.display = 'none';
+            visualSection.style.display = 'block';
+            
+            // 将Markdown内容转换为可视化编辑器数据
+            if (currentEditMode === 'markdown') {
+                convertMarkdownToVisual();
+            }
+            
+            currentEditMode = 'visual';
+        } else {
+            // 切换到Markdown编辑模式
+            btnVisualMode.classList.remove('active');
+            btnMarkdownMode.classList.add('active');
+            visualSection.style.display = 'none';
+            markdownSection.style.display = 'block';
+            
+            // 将可视化编辑器数据转换为Markdown
+            if (currentEditMode === 'visual') {
+                convertVisualToMarkdown();
+            }
+            
+            currentEditMode = 'markdown';
+            
+            // 如果SimpleMDE还未初始化，则创建它
+            if (!simplemde) {
+                simplemde = new SimpleMDE({
+                    element: document.getElementById('editDigestContent'),
+                    spellChecker: false,
+                    autosave: {
+                        enabled: true,
+                        uniqueId: `digestEditor_${currentDigestId}`,
+                        delay: 1000,
+                    },
+                    // 配置工具栏
+                    toolbar: ["bold", "italic", "heading", "|", "unordered-list", "ordered-list", "|", "link", "table", "|", "preview", "side-by-side", "fullscreen", "|", "guide"]
+                });
+
+                // 监听编辑器内容变化
+                simplemde.codemirror.on('change', function() {
+                    updatePreview();
+                });
+            }
+            
+            // 刷新SimpleMDE编辑器
+            if (simplemde && simplemde.codemirror) {
+                setTimeout(() => {
+                    simplemde.codemirror.refresh();
+                    updatePreview();
+                }, 100);
+            }
+        }
+    }
+
+    // 将Markdown内容转换为可视化编辑器数据
+    function convertMarkdownToVisual() {
+        const markdownContent = simplemde ? simplemde.value() : '';
+        const digestTitle = document.getElementById('editDigestTitleInput').value;
+        
+        // 解析Markdown内容
+        visualEditorData = parseMarkdownToVisualData(markdownContent);
+        
+        // 更新可视化编辑器
+        updateVisualEditor(digestTitle, visualEditorData);
+    }
+
+    // 将可视化编辑器数据转换为Markdown
+    function convertVisualToMarkdown() {
+        const visualTitle = document.getElementById('visualDigestTitle').value;
+        const visualData = collectVisualEditorData();
+        
+        // 生成Markdown内容
+        const markdownContent = generateMarkdownFromVisualData(visualData);
+        
+        // 更新Markdown编辑器和标题
+        document.getElementById('editDigestTitleInput').value = visualTitle;
+        if (simplemde) {
+            simplemde.value(markdownContent);
+        }
+        
+        // 更新预览
+        updatePreview();
+    }
+
+    // 初始化移动设备切换按钮
+    function initMobileToggleButtons() {
+        const btnShowEditor = document.getElementById('btnShowEditor');
+        const btnShowPreview = document.getElementById('btnShowPreview');
+        const btnBackToEditor = document.getElementById('btnBackToEditor');
+
+        // 显示编辑器
+        function showEditor() {
+            const editorSection = document.getElementById('editorSection');
+            const previewSection = document.getElementById('previewSection');
+            
+            editorSection.classList.remove('mobile-hidden');
+            previewSection.classList.remove('mobile-visible');
+            
+            btnShowEditor.classList.add('active');
+            btnShowEditor.classList.remove('btn-outline-primary');
+            btnShowEditor.classList.add('btn-primary');
+            
+            btnShowPreview.classList.remove('active');
+            btnShowPreview.classList.remove('btn-secondary');
+            btnShowPreview.classList.add('btn-outline-secondary');
+            
+            // 刷新编辑器
+            if (simplemde && simplemde.codemirror) {
+                setTimeout(() => {
+                    simplemde.codemirror.refresh();
+                    simplemde.codemirror.focus();
+                }, 100);
+            }
+        }
+
+        // 显示预览
+        function showPreview() {
+            const editorSection = document.getElementById('editorSection');
+            const previewSection = document.getElementById('previewSection');
+            
+            editorSection.classList.add('mobile-hidden');
+            previewSection.classList.add('mobile-visible');
+            
+            btnShowPreview.classList.add('active');
+            btnShowPreview.classList.remove('btn-outline-secondary');
+            btnShowPreview.classList.add('btn-secondary');
+            
+            btnShowEditor.classList.remove('active');
+            btnShowEditor.classList.remove('btn-primary');
+            btnShowEditor.classList.add('btn-outline-primary');
+            
+            // 更新预览内容
+            updatePreview();
+        }
+
+        btnShowEditor.addEventListener('click', showEditor);
+        btnShowPreview.addEventListener('click', showPreview);
+        btnBackToEditor.addEventListener('click', showEditor);
+
+        // 监听窗口大小变化，重置移动设备状态
+        let resizeTimer;
+        window.addEventListener('resize', function() {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(function() {
+                if (window.innerWidth > 768) {
+                    // 桌面模式，重置所有隐藏状态
+                    const editorSection = document.getElementById('editorSection');
+                    const previewSection = document.getElementById('previewSection');
+                    
+                    editorSection.classList.remove('mobile-hidden');
+                    previewSection.classList.remove('mobile-visible');
+                    
+                    // 刷新编辑器
+                    if (simplemde && simplemde.codemirror) {
+                        setTimeout(() => {
+                            simplemde.codemirror.refresh();
+                        }, 100);
+                    }
+                }
+            }, 250);
+        });
+    }
 
     // 加载最新快报
     function loadLatestDigest() {
@@ -409,6 +1125,13 @@
                 document.getElementById('editDigestTitleInput').value = digest.title;
                 document.getElementById('editDigestContent').value = digest.content || '';
 
+                // 重置编辑模式为可视化编辑
+                currentEditMode = 'visual';
+                document.getElementById('btnVisualMode').classList.add('active');
+                document.getElementById('btnMarkdownMode').classList.remove('active');
+                document.getElementById('visualEditSection').style.display = 'block';
+                document.getElementById('markdownEditSection').style.display = 'none';
+
                 // 初始化Markdown编辑器
                 if (simplemde) {
                     console.log('设置SimpleMDE内容:', digest.content || '');
@@ -437,8 +1160,21 @@
                     updatePreview();
                 }
 
+                // 初始化可视化编辑器数据
+                visualEditorData = parseMarkdownToVisualData(digest.content || '');
+                
+                // 同步标题到可视化编辑器并立即更新显示
+                document.getElementById('visualDigestTitle').value = digest.title;
+                updateVisualEditor(digest.title, visualEditorData);
+
                 // 监听标题变化
                 document.getElementById('editDigestTitleInput').addEventListener('input', updatePreview);
+                
+                // 监听可视化编辑器标题变化
+                document.getElementById('visualDigestTitle').addEventListener('input', function() {
+                    // 同步标题到Markdown编辑器
+                    document.getElementById('editDigestTitleInput').value = this.value;
+                });
 
                 // 显示模态框
                 const modal = new bootstrap.Modal(document.getElementById('editDigestModal'));
@@ -446,6 +1182,26 @@
 
                 // 在模态框完全显示后刷新编辑器
                 document.getElementById('editDigestModal').addEventListener('shown.bs.modal', function() {
+                    // 确保移动设备上默认显示编辑器
+                    if (window.innerWidth <= 768) {
+                        const editorSection = document.getElementById('editorSection');
+                        const previewSection = document.getElementById('previewSection');
+                        const btnShowEditor = document.getElementById('btnShowEditor');
+                        const btnShowPreview = document.getElementById('btnShowPreview');
+                        
+                        // 重置为编辑模式
+                        editorSection.classList.remove('mobile-hidden');
+                        previewSection.classList.remove('mobile-visible');
+                        
+                        btnShowEditor.classList.add('active');
+                        btnShowEditor.classList.remove('btn-outline-primary');
+                        btnShowEditor.classList.add('btn-primary');
+                        
+                        btnShowPreview.classList.remove('active');
+                        btnShowPreview.classList.remove('btn-secondary');
+                        btnShowPreview.classList.add('btn-outline-secondary');
+                    }
+                    
                     if (simplemde && simplemde.codemirror) {
                         // 延迟一下确保DOM完全渲染
                         setTimeout(() => {
@@ -487,11 +1243,508 @@
             });
     }
 
+    // 解析Markdown内容为可视化编辑器数据
+    function parseMarkdownToVisualData(markdownContent) {
+        const data = {
+            categories: {}
+        };
+
+        // 初始化所有分类
+        Object.keys(NEWS_CATEGORIES).forEach(category => {
+            data.categories[category] = [];
+        });
+
+        if (!markdownContent.trim()) {
+            return data;
+        }
+
+        const lines = markdownContent.split('\n');
+        let currentCategory = null;
+        let newsIndex = 0;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+
+            // 检查是否是分类标题 (### 开头)
+            if (line.startsWith('### ')) {
+                const categoryTitle = line.substring(4).trim();
+                
+                // 找到对应的分类
+                currentCategory = null;
+                for (const [key, info] of Object.entries(NEWS_CATEGORIES)) {
+                    if (categoryTitle.includes(info.label.substring(2)) || categoryTitle.includes(key)) {
+                        currentCategory = key;
+                        break;
+                    }
+                }
+            }
+            
+            // 检查是否是新闻项 (数字开头)
+            else if (line.match(/^\d+\.\s+\*\*(.+?)\*\*$/) && currentCategory) {
+                const titleMatch = line.match(/^\d+\.\s+\*\*(.+?)\*\*$/);
+                if (titleMatch) {
+                    const newsTitle = titleMatch[1];
+                    let newsSummary = '';
+
+                    // 查找摘要，可能在下一行或下几行
+                    for (let j = i + 1; j < lines.length; j++) {
+                        const summaryLine = lines[j].trim();
+                        
+                        // 如果遇到空行，跳过
+                        if (summaryLine === '') {
+                            continue;
+                        }
+                        
+                        // 如果遇到新的标题、分类或分隔符，停止查找
+                        if (summaryLine.startsWith('#') || 
+                            summaryLine.startsWith('---') || 
+                            summaryLine.match(/^\d+\.\s+\*\*/) ||
+                            summaryLine.startsWith('> ')) {
+                            break;
+                        }
+                        
+                        // 如果是摘要行 (以 - 开头，或者继续上一行的内容)
+                        if (summaryLine.startsWith('- ')) {
+                            const summaryContent = summaryLine.substring(2).trim();
+                            if (summaryContent) {
+                                newsSummary = summaryContent;
+                                break;
+                            }
+                        } else if (!summaryLine.startsWith('    ') && newsSummary === '') {
+                            // 如果找到非缩进的内容且还没找到摘要，可能是摘要内容
+                            newsSummary = summaryLine;
+                            break;
+                        }
+                    }
+
+                    data.categories[currentCategory].push({
+                        id: `news_${newsIndex++}`,
+                        title: newsTitle,
+                        summary: newsSummary
+                    });
+                }
+            }
+        }
+
+        return data;
+    }
+
+    // 从可视化编辑器收集数据
+    function collectVisualEditorData() {
+        const data = {
+            categories: {}
+        };
+
+        // 初始化所有分类
+        Object.keys(NEWS_CATEGORIES).forEach(category => {
+            data.categories[category] = [];
+        });
+
+        // 收集每个分类的新闻
+        const categoryElements = document.querySelectorAll('.category-section');
+        categoryElements.forEach(categoryEl => {
+            const categoryKey = categoryEl.dataset.category;
+            if (!categoryKey || !data.categories[categoryKey]) return;
+
+            const newsItems = categoryEl.querySelectorAll('.news-item');
+            newsItems.forEach(newsEl => {
+                const titleInput = newsEl.querySelector('.news-title-input');
+                const summaryInput = newsEl.querySelector('.news-summary-input');
+                
+                if (titleInput && summaryInput && titleInput.value.trim()) {
+                    data.categories[categoryKey].push({
+                        id: newsEl.dataset.newsId,
+                        title: titleInput.value.trim(),
+                        summary: summaryInput.value.trim()
+                    });
+                }
+            });
+        });
+
+        return data;
+    }
+
+    // 从可视化编辑器数据生成Markdown
+    function generateMarkdownFromVisualData(data) {
+        const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        let markdown = `# **每日网安情报速递【${today}】**\n\n------\n\n`;
+
+        // 按顺序处理分类
+        const categoryOrder = ['金融业网络安全事件', '重大网络安全事件', '重大数据泄露事件', '重大漏洞风险提示', '其他'];
+        
+        categoryOrder.forEach(category => {
+            const categoryInfo = NEWS_CATEGORIES[category];
+            if (!categoryInfo) return;
+
+            const newsItems = data.categories[category] || [];
+            
+            // 对于"其他"分类，如果没有新闻条目则跳过
+            if (category === '其他' && newsItems.length === 0) {
+                return;
+            }
+
+            markdown += `### ${categoryInfo.label}\n\n`;
+
+            if (newsItems.length === 0) {
+                markdown += '> 暂无\n';
+            } else {
+                newsItems.forEach((news, index) => {
+                    markdown += `${index + 1}. **${news.title}**\n`;
+                    markdown += `    - ${news.summary}\n`;
+                    if (index < newsItems.length - 1) {
+                        markdown += '\n';
+                    }
+                });
+            }
+
+            markdown += '\n------\n\n';
+        });
+
+        return markdown;
+    }
+
+    // 更新可视化编辑器
+    function updateVisualEditor(title, data) {
+        const visualTitle = document.getElementById('visualDigestTitle');
+        const categoriesContainer = document.getElementById('categoriesContainer');
+
+        // 设置标题
+        visualTitle.value = title;
+
+        // 清空容器
+        categoriesContainer.innerHTML = '';
+
+        // 按顺序创建分类
+        const categoryOrder = ['金融业网络安全事件', '重大网络安全事件', '重大数据泄露事件', '重大漏洞风险提示', '其他'];
+        
+        categoryOrder.forEach(category => {
+            const categoryInfo = NEWS_CATEGORIES[category];
+            const newsItems = data.categories[category] || [];
+            
+            // 对于"其他"分类，如果没有新闻且正在从Markdown解析，则不显示该分类
+            // 但如果用户在可视化编辑器中，则仍然显示以便添加新闻
+            createCategorySection(categoriesContainer, category, categoryInfo, newsItems);
+        });
+
+        // 绑定可视化编辑器事件
+        bindVisualEditorEvents();
+    }
+
+    // 创建分类区域
+    function createCategorySection(container, categoryKey, categoryInfo, newsItems) {
+        const categoryDiv = document.createElement('div');
+        categoryDiv.className = 'category-section';
+        categoryDiv.dataset.category = categoryKey;
+
+        categoryDiv.innerHTML = `
+            <div class="category-header">
+                <h3 class="category-title">${categoryInfo.label}</h3>
+                <button type="button" class="add-news-btn" data-category="${categoryKey}">
+                    <i class="bi bi-plus"></i> 添加新闻
+                </button>
+            </div>
+            <div class="news-container" data-category="${categoryKey}">
+                ${newsItems.length === 0 ? '<div class="empty-category">暂无新闻，点击"添加新闻"按钮添加</div>' : ''}
+            </div>
+        `;
+
+        container.appendChild(categoryDiv);
+
+        // 添加现有新闻项
+        const newsContainer = categoryDiv.querySelector('.news-container');
+        newsItems.forEach((news, index) => {
+            createNewsItem(newsContainer, news, categoryKey, index);
+        });
+
+        // 如果有新闻项，移除空状态提示
+        if (newsItems.length > 0) {
+            const emptyMsg = newsContainer.querySelector('.empty-category');
+            if (emptyMsg) emptyMsg.remove();
+        }
+    }
+
+    // 创建新闻项
+    function createNewsItem(container, news, categoryKey, index) {
+        const newsDiv = document.createElement('div');
+        newsDiv.className = 'news-item';
+        newsDiv.dataset.newsId = news.id || `news_${Date.now()}_${index}`;
+        newsDiv.dataset.category = categoryKey;
+
+        // 生成分类选择选项
+        let categoryOptions = '';
+        Object.keys(NEWS_CATEGORIES).forEach(key => {
+            const selected = key === categoryKey ? 'selected' : '';
+            categoryOptions += `<option value="${key}" ${selected}>${NEWS_CATEGORIES[key].label}</option>`;
+        });
+
+        newsDiv.innerHTML = `
+            <div class="news-actions">
+                <button type="button" class="news-action-btn move-up" title="上移">
+                    <i class="bi bi-arrow-up"></i>
+                </button>
+                <button type="button" class="news-action-btn move-down" title="下移">
+                    <i class="bi bi-arrow-down"></i>
+                </button>
+                <button type="button" class="news-action-btn delete" title="删除">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+            <div class="mb-2">
+                <label class="form-label small text-muted">分类</label>
+                <select class="form-select form-select-sm news-category-select">
+                    ${categoryOptions}
+                </select>
+            </div>
+            <input type="text" class="news-title-input" placeholder="请输入新闻标题..." value="${news.title || ''}">
+            <textarea class="news-summary-input" placeholder="请输入新闻摘要...">${news.summary || ''}</textarea>
+        `;
+
+        container.appendChild(newsDiv);
+        
+        // 绑定分类变更事件
+        const categorySelect = newsDiv.querySelector('.news-category-select');
+        categorySelect.addEventListener('change', function() {
+            const newCategoryKey = this.value;
+            const currentCategoryKey = newsDiv.dataset.category;
+            
+            if (newCategoryKey !== currentCategoryKey) {
+                moveNewsToCategory(newsDiv, currentCategoryKey, newCategoryKey);
+            }
+        });
+        
+        return newsDiv;
+    }
+
+    // 绑定可视化编辑器事件
+    function bindVisualEditorEvents() {
+        // 添加新闻按钮事件
+        document.querySelectorAll('.add-news-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const categoryKey = this.dataset.category;
+                addNewsItem(categoryKey);
+            });
+        });
+    }
+
+    // 全局新闻操作按钮事件处理（避免重复绑定）
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.news-action-btn')) {
+            const btn = e.target.closest('.news-action-btn');
+            const newsItem = btn.closest('.news-item');
+            
+            if (btn.classList.contains('delete')) {
+                deleteNewsItem(newsItem);
+            } else if (btn.classList.contains('move-up')) {
+                moveNewsItem(newsItem, 'up');
+            } else if (btn.classList.contains('move-down')) {
+                moveNewsItem(newsItem, 'down');
+            }
+        }
+    });
+
+    // 全局事件处理（延迟绑定）
+    document.addEventListener('click', function(e) {
+        if (e.target && e.target.id === 'btnAddCategory') {
+            const categoryName = prompt('请输入自定义分类名称：');
+            if (categoryName && categoryName.trim()) {
+                addCustomCategory(categoryName.trim());
+            }
+        }
+        
+        if (e.target && e.target.id === 'btnGlobalAddNews') {
+            showAddNewsModal();
+        }
+        
+        if (e.target && e.target.id === 'btnConfirmAddNews') {
+            confirmAddNews();
+        }
+    });
+
+    // 添加新闻项
+    function addNewsItem(categoryKey) {
+        const container = document.querySelector(`.news-container[data-category="${categoryKey}"]`);
+        if (!container) return;
+
+        // 移除空状态提示
+        const emptyMsg = container.querySelector('.empty-category');
+        if (emptyMsg) emptyMsg.remove();
+
+        // 创建新的新闻项
+        const news = { title: '', summary: '' };
+        const newsItem = createNewsItem(container, news, categoryKey, Date.now());
+        
+        // 聚焦到标题输入框
+        const titleInput = newsItem.querySelector('.news-title-input');
+        titleInput.focus();
+    }
+
+    // 删除新闻项
+    function deleteNewsItem(newsItem) {
+        if (confirm('确定要删除这条新闻吗？')) {
+            const container = newsItem.parentNode;
+            newsItem.remove();
+            
+            // 如果容器为空，显示空状态提示
+            if (container.children.length === 0) {
+                container.innerHTML = '<div class="empty-category">暂无新闻，点击"添加新闻"按钮添加</div>';
+            }
+        }
+    }
+
+    // 移动新闻项
+    function moveNewsItem(newsItem, direction) {
+        const container = newsItem.parentNode;
+        const items = Array.from(container.querySelectorAll('.news-item'));
+        const currentIndex = items.indexOf(newsItem);
+        
+        if (direction === 'up' && currentIndex > 0) {
+            container.insertBefore(newsItem, items[currentIndex - 1]);
+        } else if (direction === 'down' && currentIndex < items.length - 1) {
+            container.insertBefore(items[currentIndex + 1], newsItem);
+        }
+    }
+
+    // 将新闻项移动到不同分类
+    function moveNewsToCategory(newsItem, fromCategoryKey, toCategoryKey) {
+        // 获取目标分类容器
+        const targetContainer = document.querySelector(`.news-container[data-category="${toCategoryKey}"]`);
+        if (!targetContainer) {
+            alert('目标分类不存在');
+            return;
+        }
+
+        // 获取源分类容器
+        const sourceContainer = newsItem.parentNode;
+
+        // 移除目标分类的空状态提示
+        const targetEmptyMsg = targetContainer.querySelector('.empty-category');
+        if (targetEmptyMsg) {
+            targetEmptyMsg.remove();
+        }
+
+        // 更新新闻项的分类属性
+        newsItem.dataset.category = toCategoryKey;
+
+        // 将新闻项移动到目标分类
+        targetContainer.appendChild(newsItem);
+
+        // 检查源分类是否为空，如果为空则显示空状态提示
+        const remainingItems = sourceContainer.querySelectorAll('.news-item');
+        if (remainingItems.length === 0) {
+            sourceContainer.innerHTML = '<div class="empty-category">暂无新闻，点击"添加新闻"按钮添加</div>';
+        }
+
+        // 为移动的新闻项添加高亮效果
+        newsItem.style.backgroundColor = '#e8f5e8';
+        setTimeout(() => {
+            newsItem.style.backgroundColor = '';
+        }, 2000);
+
+        // 滚动到移动后的新闻项
+        newsItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // 添加自定义分类
+    function addCustomCategory(categoryName) {
+        const categoriesContainer = document.getElementById('categoriesContainer');
+        const categoryKey = `custom_${Date.now()}`;
+        const categoryInfo = {
+            label: categoryName,
+            key: categoryKey,
+            color: 'secondary'
+        };
+        
+        createCategorySection(categoriesContainer, categoryKey, categoryInfo, []);
+        bindVisualEditorEvents();
+    }
+
+    // 显示添加新闻模态框
+    function showAddNewsModal() {
+        // 清空表单
+        document.getElementById('addNewsForm').reset();
+        
+        // 显示模态框
+        const modal = new bootstrap.Modal(document.getElementById('addNewsModal'));
+        modal.show();
+    }
+
+    // 确认添加新闻
+    function confirmAddNews() {
+        const category = document.getElementById('newsCategory').value;
+        const title = document.getElementById('newsTitle').value.trim();
+        const summary = document.getElementById('newsSummary').value.trim();
+        
+        if (!category) {
+            alert('请选择新闻分类');
+            return;
+        }
+        
+        if (!title) {
+            alert('请输入新闻标题');
+            return;
+        }
+        
+        if (!summary) {
+            alert('请输入新闻摘要');
+            return;
+        }
+        
+        // 添加新闻到指定分类
+        addNewsToCategory(category, title, summary);
+        
+        // 关闭模态框
+        const modal = bootstrap.Modal.getInstance(document.getElementById('addNewsModal'));
+        modal.hide();
+        
+        // 清空表单
+        document.getElementById('addNewsForm').reset();
+    }
+
+    // 添加新闻到指定分类
+    function addNewsToCategory(categoryKey, title, summary) {
+        const container = document.querySelector(`.news-container[data-category="${categoryKey}"]`);
+        if (!container) {
+            alert('找不到指定的分类容器');
+            return;
+        }
+
+        // 移除空状态提示
+        const emptyMsg = container.querySelector('.empty-category');
+        if (emptyMsg) emptyMsg.remove();
+
+        // 创建新的新闻项
+        const news = { 
+            title: title, 
+            summary: summary,
+            id: `news_${Date.now()}`
+        };
+        const newsItem = createNewsItem(container, news, categoryKey, Date.now());
+        
+        // 滚动到新添加的新闻项
+        newsItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // 短暂高亮显示
+        newsItem.style.backgroundColor = '#e3f2fd';
+        setTimeout(() => {
+            newsItem.style.backgroundColor = '';
+        }, 2000);
+    }
+
     // 保存快报
     function saveDigest() {
         const digestId = document.getElementById('editDigestId').value;
-        const title = document.getElementById('editDigestTitleInput').value;
-        const content = simplemde.value();
+        let title, content;
+
+        if (currentEditMode === 'visual') {
+            // 从可视化编辑器获取数据
+            title = document.getElementById('visualDigestTitle').value;
+            const visualData = collectVisualEditorData();
+            content = generateMarkdownFromVisualData(visualData);
+        } else {
+            // 从Markdown编辑器获取数据
+            title = document.getElementById('editDigestTitleInput').value;
+            content = simplemde ? simplemde.value() : '';
+        }
 
         if (!title) {
             alert('请输入快报标题');
@@ -527,42 +1780,130 @@
 
     // 智能PDF下载/生成函数
     function downloadOrGeneratePdf(digestId) {
+        // 使用隐藏的链接元素进行下载，避免弹窗阻止
+        const downloadLink = document.createElement('a');
+        downloadLink.style.display = 'none';
+        document.body.appendChild(downloadLink);
+        
+        // 构建完整URL，确保跨设备兼容性
+        const baseUrl = window.location.origin;
+        const checkUrl = `${baseUrl}/api/digest/${digestId}/pdf`;
+        
         // 先尝试直接下载PDF
-        fetch(`/api/digest/${digestId}/pdf`, { method: 'GET' })
+        fetch(checkUrl, { method: 'HEAD' })
             .then(response => {
                 if (response.ok) {
                     // PDF存在，直接下载
-                    window.open(`/api/digest/${digestId}/pdf`, '_blank');
+                    downloadPdf(digestId, downloadLink);
                 } else if (response.status === 404) {
                     // PDF不存在，询问是否生成
                     if (confirm('PDF文件不存在或已过期，是否重新生成？')) {
-                        generatePdf(digestId);
+                        generatePdf(digestId, downloadLink);
+                    } else {
+                        document.body.removeChild(downloadLink);
                     }
                 } else {
+                    document.body.removeChild(downloadLink);
                     throw new Error(`HTTP ${response.status}`);
                 }
             })
             .catch(error => {
                 console.error('Error checking PDF:', error);
+                document.body.removeChild(downloadLink);
                 // 出错时也询问是否生成
                 if (confirm('检查PDF状态失败，是否重新生成？')) {
-                    generatePdf(digestId);
+                    const newDownloadLink = document.createElement('a');
+                    newDownloadLink.style.display = 'none';
+                    document.body.appendChild(newDownloadLink);
+                    generatePdf(digestId, newDownloadLink);
                 }
             });
     }
 
+    // 下载PDF文件
+    function downloadPdf(digestId, downloadLink) {
+        // 先获取快报信息以获得正确的日期
+        axios.get(`/api/digest/${digestId}`)
+            .then(response => {
+                const digest = response.data;
+                const digestDate = new Date(digest.date);
+                const dateStr = digestDate.toISOString().slice(0, 10).replace(/-/g, '');
+                
+                // 构建基于当前页面origin的绝对URL，确保跨设备兼容性
+                const baseUrl = window.location.origin;
+                const pdfUrl = `${baseUrl}/api/digest/${digestId}/pdf`;
+                downloadLink.href = pdfUrl;
+                downloadLink.download = `每日网安情报速递【${dateStr}】.pdf`;
+                downloadLink.target = '_blank';
+                downloadLink.click();
+                
+                // 清理DOM
+                setTimeout(() => {
+                    if (downloadLink.parentNode) {
+                        document.body.removeChild(downloadLink);
+                    }
+                }, 100);
+                
+                console.log('PDF下载已启动，URL:', pdfUrl);
+            })
+            .catch(error => {
+                console.error('Error getting digest info for download:', error);
+                // 如果获取快报信息失败，使用当前日期作为备选
+                const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+                
+                // 构建基于当前页面origin的绝对URL，确保跨设备兼容性
+                const baseUrl = window.location.origin;
+                const pdfUrl = `${baseUrl}/api/digest/${digestId}/pdf`;
+                downloadLink.href = pdfUrl;
+                downloadLink.download = `每日网安情报速递【${dateStr}】.pdf`;
+                downloadLink.target = '_blank';
+                downloadLink.click();
+                
+                // 清理DOM
+                setTimeout(() => {
+                    if (downloadLink.parentNode) {
+                        document.body.removeChild(downloadLink);
+                    }
+                }, 100);
+                
+                console.log('PDF下载已启动（使用当前日期），URL:', pdfUrl);
+            });
+    }
+
     // 生成PDF
-    function generatePdf(digestId) {
+    function generatePdf(digestId, downloadLink) {
+        // 显示加载提示
+        const loadingAlert = document.createElement('div');
+        loadingAlert.className = 'alert alert-info';
+        loadingAlert.innerHTML = '<i class="bi bi-hourglass-split"></i> 正在生成PDF，请稍候...';
+        loadingAlert.style.position = 'fixed';
+        loadingAlert.style.top = '20px';
+        loadingAlert.style.right = '20px';
+        loadingAlert.style.zIndex = '9999';
+        document.body.appendChild(loadingAlert);
+        
         axios.post(`/api/digest/${digestId}/generate-pdf`)
             .then(response => {
+                // 移除加载提示
+                document.body.removeChild(loadingAlert);
+                
                 // 生成成功，直接下载
-                const pdfUrl = `/api/digest/${digestId}/pdf`;
-                window.open(pdfUrl, '_blank');
+                downloadPdf(digestId, downloadLink);
                 
                 console.log('PDF生成并下载成功');
             })
             .catch(error => {
                 console.error('Error generating PDF:', error);
+                
+                // 移除加载提示
+                if (loadingAlert.parentNode) {
+                    document.body.removeChild(loadingAlert);
+                }
+                
+                // 清理下载链接
+                if (downloadLink.parentNode) {
+                    document.body.removeChild(downloadLink);
+                }
                 
                 // 根据错误类型显示不同提示
                 if (error.response && error.response.status === 503) {
