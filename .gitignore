@@ -250,3 +250,19 @@ tmp/
 *.json
 !requirements.txt
 !package.json
+
+# Generated report files
+*.pdf
+*.html
+
+# Test and debug files
+test_*.pdf
+real_digest_typora_*
+typora_test_digest_*
+
+# Data directory contents
+/data/*
+!/data/README.md
+
+# Static PDF directory
+/app/static/pdf/*
