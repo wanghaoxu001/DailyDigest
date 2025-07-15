@@ -26,7 +26,7 @@ selenium>=4.9.0
 webdriver-manager>=3.8.6
 
 # Playwright相关依赖
-playwright>=1.34.0
+playwright>=1.52.0
 
 # 定时任务库
 schedule>=1.2.0

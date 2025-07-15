@@ -49,10 +49,12 @@
                  url('file://{{ fonts_dir }}/github/open-sans-v17-latin-ext_latin-700italic.woff2') format('woff2');
         }
 
-        /* 基本样式 - 完全匹配Typora */
+        /* 基本样式 - 苹果风格文字渲染优化 */
         html {
             font-size: 16px;
             -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
         }
 
         body {
@@ -67,6 +69,14 @@
             padding: 30px;
             padding-bottom: 100px;
             background: white;
+            /* 苹果风格文字渲染 */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+            font-feature-settings: "kern" 1, "liga" 1, "calt" 1, "pnum" 1, "tnum" 0, "onum" 1, "lnum" 0, "dlig" 0;
+            font-kerning: normal;
+            font-variant-ligatures: common-ligatures contextual;
+            font-variant-numeric: oldstyle-nums proportional-nums;
         }
 
         /* 内容容器 */
@@ -88,7 +98,7 @@
             text-decoration: none;
         }
 
-        /* 标题样式 - 完全匹配Typora */
+        /* 标题样式 - 苹果风格渲染优化 */
         h1,
         h2,
         h3,
@@ -102,6 +112,12 @@
             line-height: 1.4;
             cursor: text;
             break-after: avoid;
+            /* 苹果风格文字渲染 */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+            font-feature-settings: "kern" 1, "liga" 1;
+            font-kerning: normal;
         }
 
         h1 tt,
@@ -161,7 +177,7 @@
             color: #777;
         }
 
-        /* 段落和列表 - 完全匹配Typora */
+        /* 段落和列表 - 苹果风格渲染优化 */
         p,
         blockquote,
         ul,
@@ -169,6 +185,10 @@
         dl,
         table {
             margin: 0.8em 0;
+            /* 苹果风格文字渲染 */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
         }
 
         li > ol,
@@ -204,6 +224,10 @@
             margin-bottom: 0.4em;
             line-height: 1.6;
             text-align: justify;
+            /* 苹果风格文字渲染 */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
         }
 
         ol ul li:last-child {
@@ -352,45 +376,36 @@
             border-top: 1px solid #eee;
         }
 
-        /* 打印优化 */
+        /* 打印优化 - 连续页面显示 + 苹果风格渲染 */
         @media print {
             * {
                 -webkit-print-color-adjust: exact !important;
-                color-adjust: exact !important;
                 print-color-adjust: exact !important;
+                /* 苹果风格文字渲染 */
+                -webkit-font-smoothing: antialiased !important;
+                -moz-osx-font-smoothing: grayscale !important;
+                text-rendering: optimizeLegibility !important;
             }
             
             body {
                 background: white !important;
+                /* 移除分页相关样式，确保内容连续显示 */
+                /* 增强文字渲染 */
+                -webkit-font-smoothing: antialiased !important;
+                -moz-osx-font-smoothing: grayscale !important;
+                text-rendering: optimizeLegibility !important;
+                font-feature-settings: "kern" 1, "liga" 1, "calt" 1 !important;
+                font-kerning: normal !important;
             }
             
-            /* 避免在标题后分页 */
-            h1,
-            h2,
-            h3,
-            h4,
-            h5,
-            h6 {
-                break-after: avoid-page;
-                page-break-after: avoid;
-            }
-            
-            /* 避免在列表项中间分页 */
-            li {
-                break-inside: avoid-page;
-                page-break-inside: avoid;
-            }
-            
-            /* 保持表格完整 */
-            table {
-                break-inside: avoid-page;
-                page-break-inside: avoid;
-            }
-            
-            /* 代码块保持完整 */
-            pre {
-                break-inside: avoid-page;
-                page-break-inside: avoid;
+            /* 完全禁用分页 */
+            * {
+                break-inside: auto !important;
+                page-break-inside: auto !important;
+                break-after: auto !important;
+                page-break-after: auto !important;
+                break-before: auto !important;
+                page-break-before: auto !important;
             }
         }
     </style>
@@ -402,7 +417,7 @@
     </div>
 
     <div class="footer">
-        <p>本快报由开源情报系统自动生成</p>
+        <p></p>
     </div>
 </body>
 

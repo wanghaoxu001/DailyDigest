@@ -40,7 +40,7 @@ def get_pdf_absolute_path(relative_path: str) -> Path:
     将PDF相对路径转换为绝对路径
     
     Args:
-        relative_path: 形如 "static/pdf/digest_20250611_7.pdf" 的相对路径
+        relative_path: 形如 "static/pdf/每日网安情报速递【20250611】_7.pdf" 的相对路径
         
     Returns:
         绝对路径Path对象
@@ -60,10 +60,10 @@ def get_pdf_relative_path(pdf_filename: str) -> str:
     生成PDF文件的相对路径（用于数据库存储）
     
     Args:
-        pdf_filename: PDF文件名，如 "digest_20250611_7.pdf"
+        pdf_filename: PDF文件名，如 "每日网安情报速递【20250611】_7.pdf"
         
     Returns:
-        相对路径字符串，如 "static/pdf/digest_20250611_7.pdf"
+        相对路径字符串，如 "static/pdf/每日网安情报速递【20250611】_7.pdf"
     """
     return f"static/pdf/{pdf_filename}"
 

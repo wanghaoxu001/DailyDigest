@@ -44,21 +44,42 @@
 }
 
 
-/* 基本样式 */
+/* 基本样式 - 苹果风格文字渲染优化 */
 
 html {
     font-size: 14px;
-    -webkit-font-smoothing: antialiased;
+    /* 苹果风格字体渲染 - 优先考虑字体原始设计 */
+    -webkit-font-smoothing: subpixel-antialiased;
+    -moz-osx-font-smoothing: auto;
+    text-rendering: optimizeQuality;
+    /* 高精度字体度量 */
+    font-kerning: auto;
+    font-variant-ligatures: common-ligatures contextual;
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
 }
 
 body {
-    font-family: "Open Sans", "Clear Sans", "Helvetica Neue", Helvetica, Arial, 'Segoe UI Emoji', sans-serif;
+    font-family: "Open Sans", "Clear Sans", "Helvetica Neue", Helvetica, Arial, 
+                 "Source Han Sans SC", "Noto Sans CJK SC", "思源黑体",
+                 "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+                 'Segoe UI Emoji', sans-serif;
     color: rgb(51, 51, 51);
     line-height: 1.6;
     max-width: none;
     margin: 0;
     padding: 0;
     background: white;
+    /* 苹果风格文字渲染 */
+    -webkit-font-smoothing: subpixel-antialiased;
+    -moz-osx-font-smoothing: auto;
+    text-rendering: optimizeQuality;
+    /* 字间距和字距微调 */
+    letter-spacing: 0.02em;
+    word-spacing: 0.05em;
+    /* 精确的字体度量 */
+    font-kerning: auto;
+    font-variant-ligatures: common-ligatures contextual;
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1, "tnum" 0;
 }
 
 
@@ -71,7 +92,7 @@ body {
 }
 
 
-/* 标题样式 */
+/* 标题样式 - 苹果风格渲染优化 */
 
 h1,
 h2,
@@ -85,6 +106,16 @@ h6 {
     font-weight: bold;
     line-height: 1.4;
     break-after: avoid;
+    /* 苹果风格文字渲染 */
+    -webkit-font-smoothing: subpixel-antialiased;
+    -moz-osx-font-smoothing: auto;
+    text-rendering: optimizeQuality;
+    /* 精确的字体特性 */
+    font-kerning: auto;
+    font-variant-ligatures: common-ligatures contextual;
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+    /* 微调间距以符合苹果系统的视觉习惯 */
+    letter-spacing: 0.015em;
 }
 
 h1 {
@@ -136,7 +167,7 @@ a:hover {
 }
 
 
-/* 段落和列表 */
+/* 段落和列表 - 苹果风格渲染优化 */
 
 p,
 blockquote,
@@ -145,6 +176,13 @@ ol,
 dl,
 table {
     margin: 0.8em 0;
+    /* 苹果风格文字渲染 */
+    -webkit-font-smoothing: subpixel-antialiased;
+    -moz-osx-font-smoothing: auto;
+    text-rendering: optimizeQuality;
+    /* 优化段落文字的可读性 */
+    font-kerning: auto;
+    font-variant-ligatures: common-ligatures;
 }
 
 li>ol,
@@ -168,10 +206,15 @@ ol:last-child {
 }
 
 
-/* 列表项样式 */
+/* 列表项样式 - 苹果风格渲染优化 */
 
 li {
     margin-bottom: 0.5em;
+    /* 苹果风格文字渲染 */
+    -webkit-font-smoothing: subpixel-antialiased;
+    -moz-osx-font-smoothing: auto;
+    text-rendering: optimizeQuality;
+    font-kerning: auto;
 }
 
 li p.first {
@@ -291,41 +334,76 @@ hr {
 }
 
 
-/* 打印优化 */
+/* 打印优化 - 苹果风格字体渲染 */
 
 @media print {
     * {
         -webkit-print-color-adjust: exact !important;
-        color-adjust: exact !important;
         print-color-adjust: exact !important;
+        /* 苹果风格字体渲染优化 */
+        -webkit-font-smoothing: subpixel-antialiased !important;
+        -moz-osx-font-smoothing: auto !important;
+        text-rendering: optimizeQuality !important;
+        font-kerning: auto !important;
     }
+    
     body {
         background: white !important;
+        /* 苹果风格文字渲染 */
+        -webkit-font-smoothing: subpixel-antialiased !important;
+        -moz-osx-font-smoothing: auto !important;
+        text-rendering: optimizeQuality !important;
+        font-kerning: auto !important;
+        font-variant-ligatures: common-ligatures contextual !important;
+        font-feature-settings: "kern" 1, "liga" 1, "calt" 1 !important;
+        /* 苹果系统的优雅字间距 */
+        letter-spacing: 0.015em !important;
+        word-spacing: 0.03em !important;
     }
+    
     /* 避免在标题后分页 */
-    h1,
-    h2,
-    h3,
-    h4,
-    h5,
-    h6 {
+    h1, h2, h3, h4, h5, h6 {
         break-after: avoid-page;
         page-break-after: avoid;
+        /* 标题的苹果风格优化 */
+        -webkit-font-smoothing: subpixel-antialiased !important;
+        -moz-osx-font-smoothing: auto !important;
+        text-rendering: optimizeQuality !important;
+        font-kerning: auto !important;
+        letter-spacing: 0.01em !important;
     }
+    
     /* 避免在列表项中间分页 */
     li {
         break-inside: avoid-page;
         page-break-inside: avoid;
+        /* 列表项的苹果风格优化 */
+        -webkit-font-smoothing: subpixel-antialiased !important;
+        -moz-osx-font-smoothing: auto !important;
+        text-rendering: optimizeQuality !important;
+        font-kerning: auto !important;
     }
+    
     /* 保持表格完整 */
     table {
         break-inside: avoid-page;
         page-break-inside: avoid;
     }
+    
     /* 代码块保持完整 */
     pre {
         break-inside: avoid-page;
         page-break-inside: avoid;
+    }
+    
+    /* 段落的苹果风格优化 */
+    p {
+        -webkit-font-smoothing: subpixel-antialiased !important;
+        -moz-osx-font-smoothing: auto !important;
+        text-rendering: optimizeQuality !important;
+        font-kerning: auto !important;
+        /* 更精确的行间距 */
+        line-height: 1.65 !important;
     }
 }
 
