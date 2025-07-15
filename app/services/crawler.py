@@ -156,11 +156,11 @@ async def _get_content_with_newspaper4k(
                     f"Newspaper4k: NLP keyword/summary extraction failed for {article_url}: {str(e_nlp)}"
                 )
                 if not summary and text_content:  # Fallback summary from content
-                    summary = text_content[:300] + "..."
+                    summary = text_content[:500] + "..."
         elif (
             text_content and not summary
         ):  # Content not None but too short for NLP, or NLP failed and no prior summary
-            summary = text_content[:300] + "..."
+            summary = text_content[:500] + "..."
 
         if article_obj.publish_date:  # Prefer newspaper's publish date
             publish_date = article_obj.publish_date
@@ -194,7 +194,7 @@ async def _get_content_with_newspaper4k(
                     if (
                         not summary and text_content
                     ):  # If summary was still empty, derive from this new content
-                        summary = text_content[:300] + "..."
+                        summary = text_content[:500] + "..."
                 except Exception as e_html:
                     logger.warning(
                         f"Newspaper4k: Fallback HTML conversion failed for {article_url}: {str(e_html)}"
@@ -249,7 +249,7 @@ async def _get_content_with_newspaper4k(
 
             # Ensure summary if not set and content exists
             if not summary and text_content:
-                summary = text_content[:300] + "..."
+                summary = text_content[:500] + "..."
             elif (
                 not summary
                 and hasattr(fallback_feed_entry, "summary")
@@ -286,7 +286,7 @@ async def _get_content_with_newspaper4k(
 
     # Final summary check
     if not summary and text_content:
-        summary = text_content[:300] + "..."
+        summary = text_content[:500] + "..."
     elif not summary and not text_content:
         summary = "摘要不可用"
         text_content = (
@@ -402,7 +402,7 @@ async def get_rss_entry_article_data(
         if hasattr(feed_entry, "summary") and feed_entry.summary:
             summary_candidate = feed_entry.summary.strip()
             # 检查摘要质量（不能太短，不能和标题完全相同）
-            if len(summary_candidate) > 50 and summary_candidate != feed_entry.title:
+            if len(summary_candidate) > 150 and summary_candidate != feed_entry.title:
                 summary = summary_candidate
         
         # 如果没有高质量摘要且启用了备选摘要选项，使用description
@@ -415,7 +415,7 @@ async def get_rss_entry_article_data(
         
         # 最后的备选方案：从内容生成摘要
         if not summary and content:
-            summary = content[:300] + "..." if len(content) > 300 else content
+            summary = content[:500] + "..." if len(content) > 300 else content
 
         return {
             "title": feed_entry.title,
@@ -522,7 +522,7 @@ async def get_wechat_article_data(
         for item in custom_parsed_items:
             item_title = item.get("title", "无标题")
             content = item.get("content", "")
-            summary = content[:300] + "..." if len(content) > 300 else content
+            summary = content[:500] + "..." if len(content) > 300 else content
             category = item.get("category", "")
 
             entities = {

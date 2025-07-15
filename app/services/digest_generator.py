@@ -66,6 +66,14 @@ def create_digest_content(news_items):
                 title = news.generated_title or news.title
                 summary = news.generated_summary or news.summary
                 
+                # 清理摘要：去除开头和结尾的换行符和空白字符
+                if summary:
+                    summary = summary.strip()
+                    
+                # 如果摘要为空或只有空白字符，使用备用文本
+                if not summary:
+                    summary = "暂无摘要"
+                
                 md_content += f"{i}. **{title}**\n"
                 md_content += f"    - {summary}\n"
                 if i < len(news_in_category):  # 不是最后一条新闻时添加空行
@@ -76,7 +84,7 @@ def create_digest_content(news_items):
         
         md_content += "\n------\n\n"
     
-    # 处理"其他"分类（如果有的话）
+    # 处理"其他"分类（只有在有新闻条目时才显示）
     if NewsCategory.OTHER in categorized_news and categorized_news[NewsCategory.OTHER]:
         md_content += f"### 五、其他\n\n"
         
@@ -84,6 +92,14 @@ def create_digest_content(news_items):
         for i, news in enumerate(other_news, 1):
             title = news.generated_title or news.title
             summary = news.generated_summary or news.summary
+            
+            # 清理摘要：去除开头和结尾的换行符和空白字符
+            if summary:
+                summary = summary.strip()
+                
+            # 如果摘要为空或只有空白字符，使用备用文本
+            if not summary:
+                summary = "暂无摘要"
             
             md_content += f"{i}. **{title}**\n"
             md_content += f"    - {summary}\n"

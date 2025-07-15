@@ -159,7 +159,7 @@ class NewsSimilarityService:
     
     def calculate_entity_similarity(self, entities1: Dict[str, Set[str]], 
                                   entities2: Dict[str, Set[str]]) -> float:
-        """计算两个新闻的实体相似度"""
+        """计算两个新闻的实体相似度 - 要求所有关键实体都匹配"""
         if not entities1 or not entities2:
             return 0.0
         
@@ -170,59 +170,87 @@ class NewsSimilarityService:
         total_entities1 = sum(len(values) for values in valid_entities1.values())
         total_entities2 = sum(len(values) for values in valid_entities2.values())
         
-        # 降低实体数量门槛：至少2个有效实体才进行判断（32%的新闻实体少于4个）
+        # 降低实体数量门槛：至少2个有效实体才进行判断
         if total_entities1 < 2 or total_entities2 < 2:
             return 0.0
-        
-        weighted_score = 0.0
-        total_weight = 0.0
         
         # 只关注最核心的安全实体类型
         critical_entity_types = ['CVE', '漏洞编号', '攻击者', '受害者', '组织', '攻击组织', '黑客组织']
         
-        # 计算每种实体类型的相似度
-        all_types = set(valid_entities1.keys()) | set(valid_entities2.keys())
+        # 找出两个新闻都有的关键实体类型
+        entity_types_1 = set(valid_entities1.keys()) & set(critical_entity_types)
+        entity_types_2 = set(valid_entities2.keys()) & set(critical_entity_types)
         
-        for entity_type in all_types:
+        # 如果两个新闻都没有关键实体，返回0
+        if not entity_types_1 or not entity_types_2:
+            return 0.0
+        
+        # 找出两个新闻共同拥有的关键实体类型
+        common_critical_types = entity_types_1 & entity_types_2
+        
+        # 如果没有共同的关键实体类型，不相似
+        if not common_critical_types:
+            logger.debug(f"实体相似度为0：没有共同的关键实体类型。新闻1实体类型: {entity_types_1}, 新闻2实体类型: {entity_types_2}")
+            return 0.0
+        
+        # 新逻辑：要求所有共同的关键实体类型都必须匹配
+        weighted_score = 0.0
+        total_weight = 0.0
+        all_types_matched = True
+        matched_types = []
+        unmatched_types = []
+        
+        logger.debug(f"开始检查共同的关键实体类型: {common_critical_types}")
+        
+        for entity_type in common_critical_types:
             set1 = valid_entities1.get(entity_type, set())
             set2 = valid_entities2.get(entity_type, set())
-            
-            if not set1 or not set2:
-                continue
             
             # 计算Jaccard相似度
             intersection = len(set1 & set2)
             union = len(set1 | set2)
             
+            if intersection == 0:
+                # 如果这个实体类型没有交集，则不相似
+                unmatched_types.append(entity_type)
+                logger.debug(f"实体类型 '{entity_type}' 没有匹配: 新闻1={list(set1)}, 新闻2={list(set2)}")
+                all_types_matched = False
+                break
+            else:
+                matched_types.append(entity_type)
+                logger.debug(f"实体类型 '{entity_type}' 匹配成功: 交集={list(set1 & set2)}, 相似度={intersection/union:.3f}")
+            
             if union > 0:
                 similarity = intersection / union
-                weight = self.ENTITY_WEIGHTS.get(entity_type, 0.05)  # 默认权重极低
-                
-                # 只有关键实体才真正参与相似度计算
-                if entity_type in critical_entity_types and intersection > 0:
-                    # 关键实体匹配直接使用设定的权重，不再额外加成
-                    weighted_score += similarity * weight
-                    total_weight += weight
-                elif entity_type not in critical_entity_types:
-                    # 非关键实体权重极低，基本不影响结果
-                    weighted_score += similarity * weight
-                    total_weight += weight
+                weight = self.ENTITY_WEIGHTS.get(entity_type, 0.05)
+                weighted_score += similarity * weight
+                total_weight += weight
         
-        # 如果没有任何匹配的实体，返回0
-        if total_weight == 0:
+        # 只有当所有共同的关键实体类型都有匹配时才返回相似度
+        if not all_types_matched or total_weight == 0:
+            logger.debug(f"实体相似度为0：要求所有关键实体都匹配，但有 {len(unmatched_types)} 个类型未匹配: {unmatched_types}")
             return 0.0
+        
+        logger.debug(f"所有关键实体类型都匹配成功: {matched_types}")
+        logger.debug(f"最终实体相似度: {weighted_score/total_weight:.3f}")
+        
+        # 处理非关键实体类型（权重很低，不影响主要判断）
+        non_critical_types = (set(valid_entities1.keys()) | set(valid_entities2.keys())) - set(critical_entity_types)
+        for entity_type in non_critical_types:
+            set1 = valid_entities1.get(entity_type, set())
+            set2 = valid_entities2.get(entity_type, set())
+            
+            if set1 and set2:
+                intersection = len(set1 & set2)
+                union = len(set1 | set2)
+                
+                if union > 0 and intersection > 0:
+                    similarity = intersection / union
+                    weight = self.ENTITY_WEIGHTS.get(entity_type, 0.05)
+                    weighted_score += similarity * weight
+                    total_weight += weight
         
         final_similarity = weighted_score / total_weight
-        
-        # 只有当有关键实体匹配时才认为相似
-        critical_matches = sum(1 for entity_type in critical_entity_types 
-                             if valid_entities1.get(entity_type) and valid_entities2.get(entity_type)
-                             and valid_entities1[entity_type] & valid_entities2[entity_type])
-        
-        # 必须至少有一个关键实体匹配才能认为相似
-        if critical_matches == 0:
-            return 0.0
-        
         return final_similarity
     
     def calculate_text_similarity(self, text1: str, text2: str) -> float:

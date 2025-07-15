@@ -3,10 +3,13 @@ import openai
 import logging
 import json
 import re
+import requests
+import asyncio
 from typing import List, Tuple, Optional, Dict
 from sqlalchemy.orm import Session
 from lingua import Language, LanguageDetectorBuilder
 from app.models.news import News, NewsCategory
+from app.models.source import Source
 
 # 获取日志记录器
 from app.config import get_logger
@@ -384,19 +387,53 @@ def translate_to_chinese(text, source_lang):
         return text, None
 
 
-def extract_entities(content):
-    """从内容中提取实体"""
+def extract_entities(content, category=None):
+    """从内容中提取实体，根据文章分类决定提取哪些实体类型"""
     try:
+        # 根据文章分类决定提取哪些实体
+        if category and category != NewsCategory.VULNERABILITY:
+            # 不是"重大漏洞风险提示"类型，提取攻击者、受害者、损失
+            system_prompt = """你是一个专业的实体提取助手。请从网络安全事件文本中提取以下三种特定实体：
+1. 攻击者 - 实施攻击的个人、组织或团体
+2. 受害者 - 受到攻击影响的个人、组织或系统  
+3. 损失 - 攻击造成的具体损失（如数据泄露量、经济损失、影响范围等）
+
+如果文本中没有明确提到某种实体，则不要包含该类型。"""
+            
+            user_prompt = f"""请从以下网络安全事件文本中提取"攻击者"、"受害者"、"损失"这三种实体，返回标准格式的JSON数组。每个实体包含'type'和'value'两个字段。
+
+示例格式：[{{"type":"攻击者","value":"某黑客组织"}},{{"type":"受害者","value":"某公司"}},{{"type":"损失","value":"100万用户数据泄露"}}]
+
+如果某种实体不存在，则不要包含在结果中。
+
+文本内容：
+{content}"""
+        else:
+            # 重大漏洞风险提示类型，只提取漏洞实体
+            system_prompt = """你是一个专业的实体提取助手。请从漏洞风险提示文本中提取漏洞相关实体：
+漏洞 - 具体的漏洞标识符、CVE编号、漏洞名称或漏洞描述
+
+如果文本中没有明确提到漏洞实体，则不要包含该类型。"""
+            
+            user_prompt = f"""请从以下漏洞风险提示文本中提取"漏洞"实体，返回标准格式的JSON数组。每个实体包含'type'和'value'两个字段。
+
+示例格式：[{{"type":"漏洞","value":"CVE-2023-1234"}},{{"type":"漏洞","value":"Windows内核权限提升漏洞"}}]
+
+如果没有漏洞实体，则返回空数组[]。
+
+文本内容：
+{content}"""
+
         response = openai_client.chat.completions.create(
             model=model,
             messages=[
                 {
                     "role": "system",
-                    "content": "你是一个专业的实体提取助手。请从文本中提取关键实体信息，包括组织、人物、产品、技术、漏洞、攻击方式等。为每个实体提供类型和值。",
+                    "content": system_prompt,
                 },
                 {
                     "role": "user",
-                    "content": f"请从以下网络安全新闻中提取关键实体，返回标准格式的JSON数组。每个实体包含'type'和'value'两个字段。例如:[{{'type':'组织','value':'微软'}},{{'type':'漏洞','value':'CVE-2023-1234'}}]。请至少提取5个实体：\n\n{content}",
+                    "content": user_prompt,
                 },
             ],
             temperature=0.3,
@@ -409,7 +446,7 @@ def extract_entities(content):
             logger.info(f"实体提取tokens使用: {tokens_usage}")
 
         result = response.choices[0].message.content
-        logger.info(f"实体提取返回结果: {result[:100]}...")
+        logger.info(f"实体提取返回结果 (分类: {category.value if category else '未知'}): {result[:100]}...")
 
         # 处理返回的JSON
         try:
@@ -455,6 +492,14 @@ def extract_entities(content):
                 elif isinstance(entity, str):
                     # 处理纯字符串格式
                     standardized_entities.append({"type": "关键词", "value": entity})
+
+            # 记录针对特定分类的提取结果
+            if category:
+                entity_types = [entity["type"] for entity in standardized_entities]
+                if category == NewsCategory.VULNERABILITY:
+                    logger.info(f"漏洞类型文章提取到的实体类型: {entity_types}")
+                else:
+                    logger.info(f"非漏洞类型文章提取到的实体类型: {entity_types}")
 
             return standardized_entities, tokens_usage
         except Exception as e:
@@ -547,27 +592,15 @@ def summarize_article(content):
             content = trimmed_content
 
         response = openai_client.chat.completions.create(
-            model=summarization_model,  # 使用专门的总结模型
+            model=summarization_model,
             messages=[
                 {
                     "role": "system",
-                    "content": "你是一个专业的网络安全新闻编辑，擅长制作网络安全事件的新闻总结。你的工作是把助手找来的事件内容总结成一段文字，不要给我任何解释，直接给我一段总结性文字，所有总结内容都在一个自然段里。这段总结会直接刊登在网站上，所以请用中文写，不要用英文。不要使用“本文描述了”等开头，呈现给用户的是一个完整的新闻总结。",
+                    "content": "你是一个专业的网络安全新闻编辑，擅长制作网络安全事件的新闻总结。你的工作是把助手找来的事件内容总结成一段文字，不要给我任何解释，直接给我一段总结性文字，所有总结内容都在一个自然段里。这段总结会直接刊登在网站上，所以请用中文写，不要用英文。不要使用\"本文描述了\"等开头，呈现给用户的是一个完整的新闻总结。",
                 },
                 {
                     "role": "user",
-                    "content": f"""请对以下网络安全新闻内容生成一个详细的新闻总结，直接给我一段总结性文字，总结需包含以下部分：
-1. 事件概述（简明扼要描述事件要点）
-2. 技术细节（如有，列出技术要点，漏洞信息，攻击方式等）
-3. 影响范围（如有，描述受影响的组织、系统或用户）
-4. 安全建议（如有，提供相关的安全防范措施）
-
-# 注意事项
-1. 直接输出综述内容，不要加入任何与综述无关的回应性语句
-2. 保持专业的编辑视角，注重新闻价值的提炼
-3. 不要给我任何解释，你的回复就是一段总结性文字，所有总结内容都在一个自然段里。
-
-原文内容：
-{content}""",
+                    "content": f"请对以下网络安全新闻内容生成一个详细的新闻总结，直接给我一段总结性文字，总结需包含事件概述、技术细节、影响范围和安全建议等部分。请注意：直接输出综述内容，不要加入任何与综述无关的回应性语句，保持专业的编辑视角，注重新闻价值的提炼，不要给我任何解释，你的回复就是一段总结性文字，所有总结内容都在一个自然段里。\n\n原文内容：\n{content}",
                 },
             ],
             temperature=0.2,
@@ -585,6 +618,342 @@ def summarize_article(content):
     except Exception as e:
         logger.error(f"生成文章总结失败: {str(e)}")
         return "", None
+
+
+async def re_crawl_article_content(url: str, title: str, source: Source, current_content: str) -> Optional[Dict]:
+    """
+    根据新闻源配置重新爬取文章内容
+    
+    Args:
+        url: 文章URL
+        title: 文章标题
+        source: 新闻源对象
+        current_content: 当前内容
+    
+    Returns:
+        包含content字段的字典，如果失败返回None
+    """
+    logger.info(f"开始重新爬取文章内容: {url}")
+    
+    # 根据新闻源的use_newspaper设置选择爬取方式
+    use_newspaper = getattr(source, "use_newspaper", True)
+    
+    if use_newspaper:
+        # 使用Newspaper4k爬取
+        logger.info("使用Newspaper4k重新爬取文章内容")
+        try:
+            from app.services.crawler import get_standard_article_data
+            crawled_data = await get_standard_article_data(
+                article_url=url,
+                article_title=title
+            )
+            return crawled_data
+        except Exception as e:
+            logger.warning(f"Newspaper4k爬取失败: {str(e)}")
+            return None
+    else:
+        # 使用直接爬取方式
+        logger.info("使用直接爬取方式重新获取文章内容")
+        
+        # 方式1: 直接requests爬取
+        requests_failed_cloudflare = False
+        try:
+            crawled_content = await _crawl_with_requests(url)
+            if crawled_content is None:
+                # 检查是否是因为Cloudflare防护导致的失败
+                requests_failed_cloudflare = True
+                logger.warning("requests爬取遇到Cloudflare防护，尝试playwright方式")
+            elif len(crawled_content.strip()) > len(current_content.strip()):
+                logger.info(f"requests爬取成功，内容长度从 {len(current_content)} 增加到 {len(crawled_content)} 字符")
+                return {"content": crawled_content}
+            else:
+                logger.info("requests爬取的内容不比原内容更完整，尝试playwright方式")
+        except Exception as e:
+            logger.warning(f"requests直接爬取失败: {str(e)}")
+        
+        # 方式2: 如果直接爬取失败，尝试使用playwright
+        logger.info("尝试使用playwright重新爬取内容")
+        try:
+            crawled_content = await _crawl_with_playwright(url)
+            if crawled_content is None:
+                # 如果两种方式都遇到Cloudflare，明确告知放弃
+                if requests_failed_cloudflare:
+                    logger.warning("requests和playwright都检测到Cloudflare防护，完全放弃重新爬取")
+                else:
+                    logger.warning("playwright爬取遇到Cloudflare防护，放弃重新爬取")
+                return None
+            elif len(crawled_content.strip()) > len(current_content.strip()):
+                logger.info(f"playwright爬取成功，内容长度从 {len(current_content)} 增加到 {len(crawled_content)} 字符")
+                return {"content": crawled_content}
+            else:
+                logger.info("playwright爬取的内容不比原内容更完整")
+        except Exception as e:
+            logger.warning(f"playwright爬取失败: {str(e)}")
+        
+        return None
+
+
+def _is_cloudflare_protected(response) -> bool:
+    """
+    检测requests响应是否被Cloudflare防护
+    """
+    try:
+        # 检查状态码
+        if response.status_code == 503:
+            return True
+        
+        # 检查响应头
+        cf_headers = [
+            'cf-ray', 'cf-cache-status', 'cf-request-id', 
+            'cloudflare-nginx', 'cf-mitigated'
+        ]
+        
+        for header in cf_headers:
+            if header in response.headers:
+                # 检查是否包含防护相关的值
+                if any(keyword in str(response.headers[header]).lower() 
+                       for keyword in ['challenge', 'ddos', 'protection']):
+                    return True
+        
+        # 检查响应内容
+        content = response.text.lower()
+        cf_keywords = [
+            'checking your browser',
+            'ddos protection by cloudflare',
+            'cloudflare ray id',
+            'enable javascript and cookies',
+            'please enable cookies',
+            'browser security check',
+            'cf-browser-verification',
+            'cloudflare security service',
+            'ray id',
+            'performance & security by cloudflare'
+        ]
+        
+        for keyword in cf_keywords:
+            if keyword in content:
+                return True
+        
+        # 检查页面标题
+        if '<title>' in content and '</title>' in content:
+            title_start = content.find('<title>') + 7
+            title_end = content.find('</title>')
+            title = content[title_start:title_end].strip()
+            
+            cf_title_keywords = [
+                'attention required',
+                'cloudflare',
+                'just a moment',
+                'checking your browser',
+                'ddos protection'
+            ]
+            
+            for keyword in cf_title_keywords:
+                if keyword in title:
+                    return True
+        
+        return False
+        
+    except Exception as e:
+        logger.warning(f"Cloudflare检测失败: {str(e)}")
+        return False
+
+
+async def _is_cloudflare_protected_playwright(page, response) -> bool:
+    """
+    检测playwright页面是否被Cloudflare防护
+    """
+    try:
+        # 检查响应状态码
+        if response and response.status == 503:
+            return True
+        
+        # 检查响应头
+        if response:
+            headers = await response.all_headers()
+            cf_headers = [
+                'cf-ray', 'cf-cache-status', 'cf-request-id', 
+                'cloudflare-nginx', 'cf-mitigated'
+            ]
+            
+            for header in cf_headers:
+                if header in headers:
+                    # 检查是否包含防护相关的值
+                    if any(keyword in str(headers[header]).lower() 
+                           for keyword in ['challenge', 'ddos', 'protection']):
+                        return True
+        
+        # 检查页面内容
+        content = await page.content()
+        content_lower = content.lower()
+        
+        cf_keywords = [
+            'checking your browser',
+            'ddos protection by cloudflare',
+            'cloudflare ray id',
+            'enable javascript and cookies',
+            'please enable cookies',
+            'browser security check',
+            'cf-browser-verification',
+            'cloudflare security service',
+            'ray id',
+            'performance & security by cloudflare'
+        ]
+        
+        for keyword in cf_keywords:
+            if keyword in content_lower:
+                return True
+        
+        # 检查页面标题
+        try:
+            title = await page.title()
+            title_lower = title.lower()
+            
+            cf_title_keywords = [
+                'attention required',
+                'cloudflare',
+                'just a moment',
+                'checking your browser',
+                'ddos protection'
+            ]
+            
+            for keyword in cf_title_keywords:
+                if keyword in title_lower:
+                    return True
+        except:
+            pass
+        
+        # 检查是否存在Cloudflare挑战元素
+        try:
+            cf_selectors = [
+                '[id*="cf"]', '[class*="cf-"]', '[class*="cloudflare"]',
+                'input[name="cf_captcha_kind"]', '#challenge-stage',
+                '.cf-challenge', '.challenge-form'
+            ]
+            
+            for selector in cf_selectors:
+                element = await page.query_selector(selector)
+                if element:
+                    return True
+        except:
+            pass
+        
+        return False
+        
+    except Exception as e:
+        logger.warning(f"Playwright Cloudflare检测失败: {str(e)}")
+        return False
+
+
+async def _crawl_with_requests(url: str) -> Optional[str]:
+    """
+    使用requests直接爬取网页内容
+    """
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        
+        # 使用loop的run_in_executor在异步上下文中运行同步请求
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: requests.get(url, headers=headers, timeout=30, verify=False)
+        )
+        
+        # 检测Cloudflare防护
+        if _is_cloudflare_protected(response):
+            logger.warning(f"检测到Cloudflare防护，放弃爬取: {url}")
+            return None
+        
+        response.raise_for_status()
+        
+        # 使用BeautifulSoup解析内容
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # 移除脚本和样式标签
+        for script in soup(["script", "style"]):
+            script.decompose()
+        
+        # 获取文本内容
+        text = soup.get_text()
+        
+        # 清理文本
+        lines = (line.strip() for line in text.splitlines())
+        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+        text = ' '.join(chunk for chunk in chunks if chunk)
+        
+        return text
+        
+    except Exception as e:
+        logger.error(f"requests爬取失败: {str(e)}")
+        return None
+
+
+async def _crawl_with_playwright(url: str) -> Optional[str]:
+    """
+    使用playwright爬取网页内容
+    """
+    try:
+        from playwright.async_api import async_playwright
+        
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            )
+            page = await context.new_page()
+            
+            try:
+                # 访问页面
+                response = await page.goto(url, timeout=30000)
+                
+                # 检测Cloudflare防护
+                if await _is_cloudflare_protected_playwright(page, response):
+                    logger.warning(f"检测到Cloudflare防护，放弃爬取: {url}")
+                    await browser.close()
+                    return None
+                
+                # 等待页面加载
+                await page.wait_for_load_state('networkidle', timeout=10000)
+                
+                # 获取页面内容
+                content = await page.content()
+                
+                # 使用BeautifulSoup解析
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(content, 'html.parser')
+                
+                # 移除脚本和样式标签
+                for script in soup(["script", "style"]):
+                    script.decompose()
+                
+                # 获取文本内容
+                text = soup.get_text()
+                
+                # 清理文本
+                lines = (line.strip() for line in text.splitlines())
+                chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+                text = ' '.join(chunk for chunk in chunks if chunk)
+                
+                await browser.close()
+                return text
+                
+            except Exception as e:
+                logger.error(f"playwright页面处理失败: {str(e)}")
+                await browser.close()
+                return None
+        
+    except Exception as e:
+        logger.error(f"playwright爬取失败: {str(e)}")
+        return None
 
 
 def ensure_serializable(data):
@@ -689,13 +1058,14 @@ def process_news(news_item: News, db: Session = None):
             use_rss_summary
             and hasattr(news_item, "summary")
             and news_item.summary
-            and len(news_item.summary.strip()) > 100
+            and len(news_item.summary.strip()) > 300
             and "..." not in news_item.summary.strip()
         ):
-            # 认为长度超过100的摘要可能有足够信息量
+            # 认为长度超过200的摘要可能有足够信息量
             has_quality_summary = True
+            # 通过数据详细解释一下为什么认为这个摘要是有足够信息量
             logger.info(
-                "检测到高质量摘要且源配置允许使用RSS摘要，将只翻译摘要不翻译全文"
+                f"检测到摘要长度超过300字符，且没有省略号，认为摘要有足够信息量: {news_item.summary}"
             )
 
             # 翻译摘要
@@ -718,25 +1088,72 @@ def process_news(news_item: News, db: Session = None):
                 logger.info("源配置不允许使用RSS摘要，将翻译全文并生成摘要")
             else:
                 logger.info("未检测到高质量摘要，将翻译全文")
+            # 检查原文长度，如果过短则重新爬取
+            content_to_translate = news_item.content
+            should_generate_summary = True  # 默认需要生成总结
+            
+            if len(news_item.content.strip()) < 300:
+                logger.info(f"原文内容过短 ({len(news_item.content)} 字符)，尝试重新爬取完整内容...")
+                try:
+                    # 根据新闻源配置选择爬取方式
+                    import asyncio
+                    crawled_data = asyncio.run(re_crawl_article_content(
+                        news_item.original_url, 
+                        news_item.title,
+                        source,
+                        news_item.content
+                    ))
+                    
+                    if crawled_data and crawled_data.get("content") and len(crawled_data["content"].strip()) > len(news_item.content.strip()):
+                        logger.info(f"成功爬取到更完整的内容，长度从 {len(news_item.content)} 增加到 {len(crawled_data['content'])} 字符")
+                        # 更新新闻对象的原文内容
+                        news_item.content = crawled_data["content"]
+                        content_to_translate = crawled_data["content"]
+                        
+                        # 如果数据库会话可用，立即保存更新
+                        if db:
+                            db.commit()
+                            logger.info("已更新数据库中的原文内容")
+                    elif crawled_data is None:
+                        logger.warning("重新爬取遇到Cloudflare防护或其他阻止，将使用翻译后原文作为总结，不调用LLM")
+                        should_generate_summary = False  # 标记不需要生成总结
+                    else:
+                        logger.warning("重新爬取未获得更好的内容，继续使用原有内容")
+                        
+                except Exception as e_crawl:
+                    logger.warning(f"重新爬取内容失败: {str(e_crawl)}，继续使用原有内容")
+            
             translated_content_result, content_tokens = translate_to_chinese(
-                news_item.content, original_language
+                content_to_translate, original_language
             )
             if content_tokens:
                 tokens_usage_stats["content_translation"] = content_tokens
             translated_content = translated_content_result
+            logger.info(f"原文内容长度: {len(content_to_translate)} 字符")
+            logger.info(f"全文翻译结果长度: {len(translated_content)} 字符")
             logger.info("全文翻译完成")
 
-            # 生成文章详细总结
-            logger.info(f"生成文章总结...")
-            article_summary_result, summary_tokens = summarize_article(
-                translated_content
-            )
-            if summary_tokens:
-                tokens_usage_stats["article_summary"] = summary_tokens
-            article_summary = article_summary_result
-            generated_summary = article_summary_result
-            summary_source = "generated"  # 标记为生成的总结
-            logger.info(f"总结生成完成，长度: {len(article_summary)} 字符")
+            # 根据是否需要生成总结来决定处理方式
+            if should_generate_summary:
+                # 生成文章详细总结
+                logger.info(f"生成文章总结...")
+                article_summary_result, summary_tokens = summarize_article(
+                    translated_content
+                )
+                if summary_tokens:
+                    tokens_usage_stats["article_summary"] = summary_tokens
+                logger.info(f"文章总结长度: {len(article_summary_result)} 字符")
+                article_summary = article_summary_result
+                generated_summary = article_summary_result
+                summary_source = "generated"  # 标记为生成的总结
+                logger.info(f"总结生成完成，长度: {len(article_summary)} 字符")
+            else:
+                # 使用翻译后的原文作为总结（截取前600字符）
+                logger.info("使用翻译后的原文作为总结，跳过LLM生成")
+                article_summary = translated_content[:600] if len(translated_content) > 600 else translated_content
+                generated_summary = article_summary
+                summary_source = "translated_original"  # 标记为翻译原文总结
+                logger.info(f"使用翻译原文作为总结，长度: {len(article_summary)} 字符")
     else:
         # 中文内容不需要翻译，直接进行总结
         logger.info("内容为中文，无需翻译")
@@ -752,7 +1169,7 @@ def process_news(news_item: News, db: Session = None):
             use_rss_summary
             and hasattr(news_item, "summary")
             and news_item.summary
-            and len(news_item.summary.strip()) > 50
+            and len(news_item.summary.strip()) > 100
         ):
             logger.info("使用现有摘要作为总结")
             article_summary = news_item.summary
@@ -787,7 +1204,7 @@ def process_news(news_item: News, db: Session = None):
 
     # 提取实体
     logger.info(f"提取实体信息...")
-    entities, entity_tokens = extract_entities(translated_content)
+    entities, entity_tokens = extract_entities(translated_content, category)
     if entity_tokens:
         tokens_usage_stats["entities"] = entity_tokens
     entity_count = len(entities) if isinstance(entities, list) else 0
