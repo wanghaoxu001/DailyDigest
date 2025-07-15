@@ -9,8 +9,11 @@ services:
       - ./data:/app/data
       - ./daily_digest.db:/app/daily_digest.db
       - ./.env:/app/.env
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     environment:
       - PYTHONPATH=/app
+      - TZ=Asia/Shanghai
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:18899/health"]

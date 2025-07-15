@@ -713,13 +713,26 @@ class SchedulerService:
         
     def get_status(self) -> dict:
         """获取调度器状态"""
+        from datetime import timezone
+        
+        # 处理下次运行时间，确保显示本地时间
+        next_run_times = []
+        for job in schedule.jobs:
+            if job.next_run:
+                # schedule模块返回的是本地时间，直接格式化即可
+                next_run_times.append(job.next_run.isoformat())
+            else:
+                next_run_times.append(None)
+        
         return {
             'is_running': self.is_running,
             'event_generation_interval': self.event_generation_interval,
             'crawl_sources_interval': self.crawl_sources_interval,
             'scheduled_jobs_count': len(schedule.jobs),
-            'next_run_times': [job.next_run.isoformat() if job.next_run else None for job in schedule.jobs if job.next_run],
-            'current_tasks': self._get_current_tasks_status()
+            'next_run_times': next_run_times,
+            'current_tasks': self._get_current_tasks_status(),
+            'server_time': datetime.now().isoformat(),
+            'server_timezone': 'CST (UTC+8)'
         }
     
     def _get_current_tasks_status(self) -> Dict:

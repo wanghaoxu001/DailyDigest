@@ -22,6 +22,7 @@ services:
     environment:
       - PYTHONPATH=/app
       - FLASK_ENV=development
+      - TZ=Asia/Shanghai
     # restart: unless-stopped
     # 开发环境可以禁用健康检查以加快启动
     # healthcheck:
