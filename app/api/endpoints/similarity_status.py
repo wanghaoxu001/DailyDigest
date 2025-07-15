@@ -58,3 +58,23 @@ async def test_similarity(text1: str, text2: str):
             "text1": text1,
             "text2": text2
         } 
+
+
+@router.get("/status")
+async def get_system_status():
+    """获取系统整体状态"""
+    try:
+        # 检查相似度服务状态
+        stats = similarity_service.get_cache_stats()
+        model_loaded = stats.get("model_loaded", False)
+        
+        # 这里可以添加更多系统组件的检查
+        # 比如数据库连接、文件系统等
+        
+        if model_loaded:
+            return {"status": "healthy", "message": "系统运行正常"}
+        else:
+            return {"status": "degraded", "message": "相似度服务未完全加载"}
+            
+    except Exception as e:
+        return {"status": "error", "message": f"系统检查失败: {str(e)}"}

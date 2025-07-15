@@ -299,6 +299,13 @@ def crawl_source(source_id: int, db: Session = Depends(get_db)):
     return response
 
 
+@router.get("/active/count")
+def get_active_sources_count(db: Session = Depends(get_db)):
+    """获取活跃新闻源数量"""
+    count = db.query(Source).filter(Source.active == True).count()
+    return {"count": count}
+
+
 @router.post("/crawl-all", status_code=status.HTTP_202_ACCEPTED)
 def crawl_all_sources():
     """触发所有活跃新闻源的抓取"""

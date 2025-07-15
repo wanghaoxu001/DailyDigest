@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict
 from pydantic import BaseModel
@@ -159,6 +159,12 @@ def get_latest_digest(db: Session = Depends(get_db)):
     # 手动转换ORM对象到字典
     return digest_to_dict(latest_digest)
 
+@router.get("/count")
+def get_digests_count(db: Session = Depends(get_db)):
+    """获取快报总数量"""
+    count = db.query(Digest).count()
+    return {"count": count}
+
 @router.get("/{digest_id}", response_model=DigestDetailResponse)
 def get_digest(digest_id: int, db: Session = Depends(get_db)):
     """获取特定快报详情"""
@@ -213,7 +219,11 @@ def update_digest(digest_id: int, digest_update: DigestUpdate, db: Session = Dep
     return digest_to_dict(digest)
 
 @router.post("/{digest_id}/generate-pdf", response_model=DigestResponse)
-def generate_digest_pdf(digest_id: int, db: Session = Depends(get_db)):
+def generate_digest_pdf(
+    digest_id: int, 
+    use_typora: bool = False,
+    db: Session = Depends(get_db)
+):
     """生成快报的PDF文件"""
     digest = db.query(Digest).filter(Digest.id == digest_id).first()
     
@@ -223,8 +233,17 @@ def generate_digest_pdf(digest_id: int, db: Session = Depends(get_db)):
             detail="快报不存在"
         )
     
-    # 生成PDF
-    pdf_path = generate_pdf(digest)
+    # 根据参数选择渲染器生成PDF
+    if use_typora:
+        try:
+            from app.services.playwright_pdf_generator import generate_pdf_typora
+            pdf_path = generate_pdf_typora(digest)
+            logger.info(f"使用Typora渲染器生成PDF: {pdf_path}")
+        except Exception as e:
+            logger.error(f"Typora渲染器生成PDF失败，回退到原有渲染器: {e}")
+            pdf_path = generate_pdf(digest)
+    else:
+        pdf_path = generate_pdf(digest)
     
     if pdf_path is None:
         raise HTTPException(
@@ -240,8 +259,9 @@ def generate_digest_pdf(digest_id: int, db: Session = Depends(get_db)):
     # 手动转换ORM对象到字典
     return digest_to_dict(digest)
 
+@router.head("/{digest_id}/pdf")
 @router.get("/{digest_id}/pdf")
-def download_digest_pdf(digest_id: int, db: Session = Depends(get_db)):
+def download_digest_pdf(digest_id: int, request: Request, db: Session = Depends(get_db)):
     """下载快报PDF"""
     digest = db.query(Digest).filter(Digest.id == digest_id).first()
     
@@ -267,19 +287,78 @@ def download_digest_pdf(digest_id: int, db: Session = Depends(get_db)):
             detail="PDF文件不存在或已被删除"
         )
     
-    # 返回文件作为响应
+    # 生成中文文件名格式：每日网安情报速递【yyyyMMdd】.pdf
     try:
+        date_str = digest.date.strftime('%Y%m%d')
+        safe_filename = f"每日网安情报速递【{date_str}】.pdf"
+        logger.info(f"生成下载文件名: {safe_filename}")
+    except Exception as e:
+        logger.error(f"生成文件名失败: {str(e)}")
+        # 使用备用文件名
+        safe_filename = f"digest_{digest.id}.pdf"
+    
+    # 如果是HEAD请求，只返回headers不返回内容
+    if request.method == "HEAD":
+        try:
+            logger.info(f"处理HEAD请求，文件路径: {pdf_absolute_path}")
+            file_size = pdf_absolute_path.stat().st_size
+            logger.info(f"文件大小: {file_size} bytes")
+            
+            # 对中文文件名进行URL编码
+            import urllib.parse
+            encoded_filename = urllib.parse.quote(safe_filename, safe='')
+            
+            return Response(
+                content="",
+                status_code=200,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'attachment; filename="digest.pdf"; filename*=UTF-8\'\'{encoded_filename}',
+                    "Content-Length": str(file_size),
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache", 
+                    "Expires": "0",
+                    "X-Content-Type-Options": "nosniff",
+                    "X-Frame-Options": "DENY"
+                }
+            )
+        except Exception as e:
+            logger.error(f"HEAD请求处理失败: {str(e)}")
+            logger.error(f"文件路径: {pdf_absolute_path}")
+            logger.error(f"文件存在: {pdf_absolute_path.exists()}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"获取PDF文件信息失败: {str(e)}"
+            )
+    
+    # GET请求返回文件内容
+    try:
+        logger.info(f"处理GET请求，开始读取文件: {pdf_absolute_path}")
         with open(pdf_absolute_path, "rb") as file:
             content = file.read()
+        
+        logger.info(f"文件读取成功，大小: {len(content)} bytes")
+        
+        # 对中文文件名进行URL编码
+        import urllib.parse
+        encoded_filename = urllib.parse.quote(safe_filename, safe='')
         
         return Response(
             content=content,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f"attachment; filename=digest_{digest.date.strftime('%Y%m%d')}.pdf"
+                "Content-Disposition": f'attachment; filename="digest.pdf"; filename*=UTF-8\'\'{encoded_filename}',
+                "Content-Length": str(len(content)),
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+                "X-Content-Type-Options": "nosniff",
+                "X-Frame-Options": "DENY"
             }
         )
     except Exception as e:
+        logger.error(f"GET请求处理失败: {str(e)}")
+        logger.error(f"文件路径: {pdf_absolute_path}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"读取PDF文件失败: {str(e)}"

@@ -20,6 +20,7 @@ class NewsBase(BaseModel):
     generated_title: Optional[str] = None
     generated_summary: Optional[str] = None
     article_summary: Optional[str] = None
+    summary_source: Optional[str] = None
     category: Optional[str] = None
     is_used_in_digest: bool = False
     is_processed: bool = False
@@ -32,6 +33,7 @@ class NewsResponse(NewsBase):
     original_url: str
     original_language: Optional[str] = None
     entities: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None
+    tokens_usage: Optional[Dict[str, Any]] = None
     publish_date: Optional[str] = None
     fetched_at: str
     created_at: str
@@ -91,6 +93,7 @@ def news_to_dict(news: News, db: Session = None) -> dict:
         "generated_title": news.generated_title,
         "generated_summary": news.generated_summary,
         "article_summary": news.article_summary,
+        "summary_source": news.summary_source,
         "category": news.category.value if news.category else None,
         "entities": news.entities,
         "tokens_usage": news.tokens_usage,
@@ -481,6 +484,19 @@ def get_recent_news_separated(
     }
 
 
+@router.get("/today/count")
+def get_today_news_count(db: Session = Depends(get_db)):
+    """获取今日新闻数量"""
+    from datetime import datetime, time
+    
+    # 获取今天的开始时间
+    today = datetime.now().date()
+    today_start = datetime.combine(today, time.min)
+    
+    count = db.query(News).filter(News.created_at >= today_start).count()
+    return {"count": count}
+
+
 @router.get("/{news_id}", response_model=NewsResponse)
 def get_news_detail(news_id: int, db: Session = Depends(get_db)):
     """获取新闻详情"""
@@ -575,6 +591,95 @@ def batch_delete_news(request: BatchNewsIds, db: Session = Depends(get_db)):
 
     # 返回删除结果
     return {"detail": f"成功删除 {deleted_count} 条新闻"}
+
+
+# 重新分类响应模型
+class ReclassifyResponse(BaseModel):
+    id: int
+    original_category: Optional[str] = None
+    new_category: Optional[str] = None
+    category_changed: bool = False
+    message: str
+
+
+@router.post("/{news_id}/reclassify", response_model=ReclassifyResponse)
+def reclassify_news(news_id: int, db: Session = Depends(get_db)):
+    """重新判断新闻分类"""
+    db_news = db.query(News).filter(News.id == news_id).first()
+
+    if db_news is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="新闻不存在")
+
+    # 记录原始分类
+    original_category = db_news.category.value if db_news.category else None
+
+    try:
+        # 使用现有的分类服务重新判断分类
+        from app.services.llm_processor import categorize_news
+        
+        # 获取新闻内容用于分类
+        content_for_classification = db_news.content
+        if not content_for_classification and db_news.summary:
+            content_for_classification = db_news.summary
+            
+        if not content_for_classification:
+            raise ValueError("无法获取新闻内容进行分类")
+
+        # 调用分类服务
+        new_category, tokens_usage = categorize_news(db_news.title, content_for_classification)
+        
+        # 检查分类是否发生变更
+        category_changed = (db_news.category != new_category)
+        
+        # 更新新闻分类
+        db_news.category = new_category
+        
+        # 更新token使用统计
+        if tokens_usage and db_news.tokens_usage:
+            if isinstance(db_news.tokens_usage, dict):
+                # 如果现有的tokens_usage是字典，合并统计
+                current_tokens = db_news.tokens_usage.copy()
+                current_tokens['prompt_tokens'] = current_tokens.get('prompt_tokens', 0) + tokens_usage.get('prompt_tokens', 0)
+                current_tokens['completion_tokens'] = current_tokens.get('completion_tokens', 0) + tokens_usage.get('completion_tokens', 0)
+                current_tokens['total_tokens'] = current_tokens.get('total_tokens', 0) + tokens_usage.get('total_tokens', 0)
+                db_news.tokens_usage = current_tokens
+            else:
+                db_news.tokens_usage = tokens_usage
+        elif tokens_usage:
+            db_news.tokens_usage = tokens_usage
+        
+        db.commit()
+        db.refresh(db_news)
+
+        # 准备响应
+        new_category_str = new_category.value if new_category else None
+        message = f"重新分类完成"
+        
+        if category_changed:
+            if original_category and new_category_str:
+                message = f"分类已从'{original_category}'更改为'{new_category_str}'"
+            elif new_category_str:
+                message = f"已设置分类为'{new_category_str}'"
+            else:
+                message = "已清除分类"
+        else:
+            message = f"分类未变更，仍为'{new_category_str or '未分类'}'"
+
+        return ReclassifyResponse(
+            id=news_id,
+            original_category=original_category,
+            new_category=new_category_str,
+            category_changed=category_changed,
+            message=message
+        )
+
+    except Exception as e:
+        db.rollback()
+        logging.error(f"重新分类新闻失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"重新分类失败: {str(e)}",
+        )
 
 
 
