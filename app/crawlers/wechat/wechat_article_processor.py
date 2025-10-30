@@ -65,23 +65,61 @@ class WechatArticleProcessor:
             headless=True, image_enabled=True, timeout=60000, retry_times=2
         )
 
-    async def process_url(self, url: str) -> Optional[Dict[str, Any]]:
+    async def process_url(self, url: str, rss_entry: Optional[Any] = None) -> Optional[Dict[str, Any]]:
         """处理单个URL
 
         Args:
             url: 微信文章URL
+            rss_entry: RSS条目对象（可选），如果提供且包含足够内容，将跳过爬虫直接使用
 
         Returns:
             Dict: 处理结果，或None（如果处理失败）
         """
-        # 1. 爬取文章
-        article_data = await self.crawler.crawl_article(url)
+        article_data = None
+        
+        # 1. 检查RSS条目是否已包含足够的内容
+        if rss_entry:
+            rss_content_html = ""
+            if hasattr(rss_entry, "content") and rss_entry.content:
+                if isinstance(rss_entry.content, list) and len(rss_entry.content) > 0:
+                    rss_content_html = rss_entry.content[0].get("value", "")
+            
+            if len(rss_content_html) > 100:
+                print(f"RSS内容足够长 ({len(rss_content_html)} 字符)，跳过Playwright爬虫，直接使用RSS内容")
+                
+                # 从RSS entry.title提取元数据
+                title = getattr(rss_entry, "title", "")
+                
+                # 解析标题中的日期和期号（针对5th域安全微讯早报等格式）
+                title_match = re.search(r"(.*?)【(\d+)】(\d+)期", title)
+                digest_date = ""
+                issue_number = ""
+                if title_match:
+                    digest_date = title_match.group(2)
+                    issue_number = title_match.group(3)
+                    print(f"  提取元数据 - 日期: {digest_date}, 期号: {issue_number}")
+                
+                # 构造模拟的article_data，跳过爬虫
+                article_data = {
+                    "success": True,
+                    "title": title,
+                    "content": rss_content_html,
+                    "crawl_time": datetime.now().isoformat(),
+                    "source": "rss_content",  # 标记来源
+                    "digest_date": digest_date,  # 新增：从标题提取的日期
+                    "issue_number": issue_number,  # 新增：从标题提取的期号
+                }
+        
+        # 2. 如果RSS内容不足或未提供，使用爬虫抓取
+        if not article_data:
+            print(f"使用Playwright爬虫抓取文章: {url}")
+            article_data = await self.crawler.crawl_article(url)
 
         if not article_data or not article_data.get("success", False):
             print(f"爬取文章失败: {url}")
             return None
 
-        # 2. 解析文章内容
+        # 3. 解析文章内容
         title = article_data.get("title", "")
         content = article_data.get("content", "")
 
@@ -102,7 +140,15 @@ class WechatArticleProcessor:
 
         # 4. 使用解析器处理内容
         try:
-            parser = parser_class(content)
+            # 准备元数据（从article_data中提取）
+            metadata = {
+                "title": title,
+                "date": article_data.get("digest_date", ""),
+                "issue_number": article_data.get("issue_number", ""),
+            }
+            
+            # 创建解析器实例，传入元数据
+            parser = parser_class(content, metadata=metadata)
             parsed_data = parser.parse()
 
             # 5. 添加元数据
@@ -114,10 +160,17 @@ class WechatArticleProcessor:
 
             # 6. 保存结果
             result = self._save_parsed_article(parsed_data)
+            
+            # 7. 将article_data中的重要字段添加到result中
+            result["source"] = article_data.get("source", "crawler")
+            result["digest_date"] = article_data.get("digest_date", "")
+            result["issue_number"] = article_data.get("issue_number", "")
+            result["content"] = article_data.get("content", "")
+            
             print(f"result: {result}")
             print(result)
             print("=" * 50)
-            print(f"raw_content: {article_data.get('content', '')}")
+            print(f"raw_content: {article_data.get('content', '')[:500]}...")
             print("=" * 50)
             print(f"成功解析文章: {title}")
             return result
@@ -200,23 +253,24 @@ class WechatArticleProcessor:
         return text[:50]
 
 
-async def process_url(url: str) -> Optional[Dict[str, Any]]:
+async def process_url(url: str, rss_entry: Optional[Any] = None) -> Optional[Dict[str, Any]]:
     """便捷函数，处理单个URL
 
     Args:
         url: 微信文章URL
+        rss_entry: RSS条目对象（可选），如果提供且包含足够内容，将跳过爬虫直接使用
 
     Returns:
         Dict: 处理结果，或None（如果处理失败）
     """
     processor = WechatArticleProcessor()
-    return await processor.process_url(url)
+    return await processor.process_url(url, rss_entry=rss_entry)
 
 
 async def main():
     """主函数，用于测试"""
     # 测试URL
-    url = "https://mp.weixin.qq.com/s/gkt_xlO5FFqdNj6Z12hAaQ"
+    url = "https://mp.weixin.qq.com/s/cd_f18TysikG7dXN8TqMIQ"
 
     print(f"开始处理文章: {url}")
     result = await process_url(url)

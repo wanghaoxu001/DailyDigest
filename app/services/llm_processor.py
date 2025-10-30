@@ -99,7 +99,7 @@ def parse_llm_response(response_text, expected_format="json"):
             logger.debug(f"成功解析JSON: {type(data)}")
             return data
         except json.JSONDecodeError as e:
-            logger.warning(f"JSON解析失败: {str(e)}，尝试备用解析方法")
+            logger.warning(f"JSON解析失败: {str(e)}，尝试备用解析方法", exc_info=True)
 
             try:
                 # 3. 尝试修复常见JSON格式问题
@@ -128,10 +128,10 @@ def parse_llm_response(response_text, expected_format="json"):
                     logger.debug("通过正则表达式成功提取JSON对象")
                     return data
             except Exception as e:
-                logger.error(f"正则表达式提取JSON失败: {str(e)}")
+                logger.error(f"正则表达式提取JSON失败: {str(e)}", exc_info=True)
 
             # 5. 最后返回错误信息
-            logger.error(f"所有JSON解析方法均失败。原始内容: {response_text}")
+            logger.error(f"所有JSON解析方法均失败。原始内容: {response_text}", exc_info=True)
             return None
 
     # 对于纯文本格式的处理
@@ -146,7 +146,7 @@ def parse_llm_response(response_text, expected_format="json"):
 
     # 其他格式的处理可以在这里扩展
     else:
-        logger.warning(f"不支持的预期格式: {expected_format}")
+        logger.warning(f"不支持的预期格式: {expected_format}", exc_info=True)
         return response_text
 
 
@@ -168,14 +168,15 @@ def preprocess_text_for_detection(text):
                 try:
                     # 容错模式
                     text = text.decode("utf-8", errors="replace")
-                except:
+                except Exception as e:
+                    logger.warning(f"文本解码失败，返回空字符串: {type(e).__name__}: {str(e)}", exc_info=True)
                     return ""
 
     # 非字符串类型转换为字符串
     if not isinstance(text, str):
         try:
             text = str(text)
-        except:
+        except Exception as e:
             return ""
 
     # 删除URL
@@ -204,7 +205,7 @@ def detect_language(text):
     if not isinstance(text, (str, bytes)):
         try:
             text = str(text)
-        except:
+        except Exception as e:
             return "unknown"
 
     if len(str(text).strip()) < 10:
@@ -235,7 +236,7 @@ def detect_language(text):
         return "unknown"
 
     except Exception as e:
-        logger.error(f"语言检测失败: {str(e)}")
+        logger.error(f"语言检测失败: {str(e)}", exc_info=True)
         return "unknown"
 
 
@@ -383,7 +384,7 @@ def translate_to_chinese(text, source_lang):
 
         return response.choices[0].message.content, tokens_usage
     except Exception as e:
-        logger.error(f"翻译失败: {str(e)}")
+        logger.error(f"翻译失败: {str(e)}", exc_info=True)
         return text, None
 
 
@@ -503,10 +504,10 @@ def extract_entities(content, category=None):
 
             return standardized_entities, tokens_usage
         except Exception as e:
-            logger.error(f"解析实体结果失败: {str(e)}")
+            logger.error(f"解析实体结果失败: {str(e)}", exc_info=True)
             return [{"type": "error", "value": f"解析失败: {str(e)}"}], tokens_usage
     except Exception as e:
-        logger.error(f"提取实体失败: {str(e)}")
+        logger.error(f"提取实体失败: {str(e)}", exc_info=True)
         return [{"type": "error", "value": f"API调用失败: {str(e)}"}], None
 
 
@@ -567,7 +568,7 @@ def categorize_news(title, content):
         # 默认分类
         return NewsCategory.OTHER, tokens_usage
     except Exception as e:
-        logger.error(f"分类失败: {str(e)}")
+        logger.error(f"分类失败: {str(e)}", exc_info=True)
         return NewsCategory.OTHER, None
 
 
@@ -616,80 +617,41 @@ def summarize_article(content):
 
         return summary, tokens_usage
     except Exception as e:
-        logger.error(f"生成文章总结失败: {str(e)}")
+        logger.error(f"生成文章总结失败: {str(e)}", exc_info=True)
         return "", None
 
 
 async def re_crawl_article_content(url: str, title: str, source: Source, current_content: str) -> Optional[Dict]:
     """
-    根据新闻源配置重新爬取文章内容
-    
-    Args:
-        url: 文章URL
-        title: 文章标题
-        source: 新闻源对象
-        current_content: 当前内容
-    
+    在 LLM 处理阶段对文章进行“重爬”，优先使用通用爬虫模块采集正文。
+
     Returns:
-        包含content字段的字典，如果失败返回None
+        包含 content 字段的字典（仅在比 current_content 更完整时返回）；否则返回 None。
     """
-    logger.info(f"开始重新爬取文章内容: {url}")
-    
-    # 根据新闻源的use_newspaper设置选择爬取方式
-    use_newspaper = getattr(source, "use_newspaper", True)
-    
-    if use_newspaper:
-        # 使用Newspaper4k爬取
-        logger.info("使用Newspaper4k重新爬取文章内容")
-        try:
-            from app.services.crawler import get_standard_article_data
-            crawled_data = await get_standard_article_data(
-                article_url=url,
-                article_title=title
-            )
-            return crawled_data
-        except Exception as e:
-            logger.warning(f"Newspaper4k爬取失败: {str(e)}")
-            return None
-    else:
-        # 使用直接爬取方式
-        logger.info("使用直接爬取方式重新获取文章内容")
-        
-        # 方式1: 直接requests爬取
-        requests_failed_cloudflare = False
-        try:
-            crawled_content = await _crawl_with_requests(url)
-            if crawled_content is None:
-                # 检查是否是因为Cloudflare防护导致的失败
-                requests_failed_cloudflare = True
-                logger.warning("requests爬取遇到Cloudflare防护，尝试playwright方式")
-            elif len(crawled_content.strip()) > len(current_content.strip()):
-                logger.info(f"requests爬取成功，内容长度从 {len(current_content)} 增加到 {len(crawled_content)} 字符")
-                return {"content": crawled_content}
+    logger.info(f"开始重新爬取文章内容(通用爬虫): {url}")
+
+    # 统一调用通用爬虫模块（内部已包含 requests 优先、playwright 回退）
+    try:
+        from app.crawlers.generic.article_crawler import (
+            crawl_article_content as generic_crawl_article_content,
+        )
+
+        crawled = await generic_crawl_article_content(url)
+        if crawled and crawled.get("success") and crawled.get("content"):
+            new_content = str(crawled["content"]) if crawled.get("content") else ""
+            if len(new_content.strip()) > len(current_content.strip()):
+                logger.info(
+                    f"重爬成功，内容长度从 {len(current_content)} 增加到 {len(new_content)} 字符"
+                )
+                return {"content": new_content}
             else:
-                logger.info("requests爬取的内容不比原内容更完整，尝试playwright方式")
-        except Exception as e:
-            logger.warning(f"requests直接爬取失败: {str(e)}")
-        
-        # 方式2: 如果直接爬取失败，尝试使用playwright
-        logger.info("尝试使用playwright重新爬取内容")
-        try:
-            crawled_content = await _crawl_with_playwright(url)
-            if crawled_content is None:
-                # 如果两种方式都遇到Cloudflare，明确告知放弃
-                if requests_failed_cloudflare:
-                    logger.warning("requests和playwright都检测到Cloudflare防护，完全放弃重新爬取")
-                else:
-                    logger.warning("playwright爬取遇到Cloudflare防护，放弃重新爬取")
+                logger.info("重爬获得的内容不比原内容更完整，忽略更新")
                 return None
-            elif len(crawled_content.strip()) > len(current_content.strip()):
-                logger.info(f"playwright爬取成功，内容长度从 {len(current_content)} 增加到 {len(crawled_content)} 字符")
-                return {"content": crawled_content}
-            else:
-                logger.info("playwright爬取的内容不比原内容更完整")
-        except Exception as e:
-            logger.warning(f"playwright爬取失败: {str(e)}")
-        
+        else:
+            logger.warning("通用爬虫未能获取有效内容或被目标站点拦截")
+            return None
+    except Exception as e:
+        logger.warning(f"通用爬虫重爬失败: {str(e)}", exc_info=True)
         return None
 
 
@@ -755,7 +717,7 @@ def _is_cloudflare_protected(response) -> bool:
         return False
         
     except Exception as e:
-        logger.warning(f"Cloudflare检测失败: {str(e)}")
+        logger.warning(f"Cloudflare检测失败: {str(e)}", exc_info=True)
         return False
 
 
@@ -820,7 +782,7 @@ async def _is_cloudflare_protected_playwright(page, response) -> bool:
             for keyword in cf_title_keywords:
                 if keyword in title_lower:
                     return True
-        except:
+        except Exception as e:
             pass
         
         # 检查是否存在Cloudflare挑战元素
@@ -835,13 +797,13 @@ async def _is_cloudflare_protected_playwright(page, response) -> bool:
                 element = await page.query_selector(selector)
                 if element:
                     return True
-        except:
+        except Exception as e:
             pass
         
         return False
         
     except Exception as e:
-        logger.warning(f"Playwright Cloudflare检测失败: {str(e)}")
+        logger.warning(f"Playwright Cloudflare检测失败: {str(e)}", exc_info=True)
         return False
 
 
@@ -893,7 +855,7 @@ async def _crawl_with_requests(url: str) -> Optional[str]:
         return text
         
     except Exception as e:
-        logger.error(f"requests爬取失败: {str(e)}")
+        logger.error(f"requests爬取失败: {str(e)}", exc_info=True)
         return None
 
 
@@ -947,12 +909,12 @@ async def _crawl_with_playwright(url: str) -> Optional[str]:
                 return text
                 
             except Exception as e:
-                logger.error(f"playwright页面处理失败: {str(e)}")
+                logger.error(f"playwright页面处理失败: {str(e)}", exc_info=True)
                 await browser.close()
                 return None
         
     except Exception as e:
-        logger.error(f"playwright爬取失败: {str(e)}")
+        logger.error(f"playwright爬取失败: {str(e)}", exc_info=True)
         return None
 
 
@@ -1003,7 +965,7 @@ def ensure_serializable(data):
     # 其他情况尝试转换为字符串
     try:
         return str(data)
-    except:
+    except Exception as e:
         return None
 
 
@@ -1121,7 +1083,7 @@ def process_news(news_item: News, db: Session = None):
                         logger.warning("重新爬取未获得更好的内容，继续使用原有内容")
                         
                 except Exception as e_crawl:
-                    logger.warning(f"重新爬取内容失败: {str(e_crawl)}，继续使用原有内容")
+                    logger.warning(f"重新爬取内容失败: {str(e_crawl)}，继续使用原有内容", exc_info=True)
             
             translated_content_result, content_tokens = translate_to_chinese(
                 content_to_translate, original_language
@@ -1338,7 +1300,7 @@ def generate_event_name(primary_title: str, related_titles: List[str], entities:
         return event_name, tokens_usage
         
     except Exception as e:
-        logger.error(f"生成事件名称失败: {str(e)}")
+        logger.error(f"生成事件名称失败: {str(e)}", exc_info=True)
         # 返回默认名称
         if entities.get('CVE'):
             return f"漏洞 {list(entities['CVE'])[0]}", None

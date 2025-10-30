@@ -1,16 +1,38 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import List, Optional, Dict, Union, Any
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 import logging
+import pytz
 
 from app.db.session import get_db
 from app.models.news import News, NewsCategory
 from app.services.llm_processor import process_news
 from app.services.news_similarity import similarity_service
+from app.config import get_logger
 
 router = APIRouter()
+
+logger = get_logger(__name__)
+
+# 北京时区
+BEIJING_TZ = pytz.timezone('Asia/Shanghai')
+
+def format_datetime_with_tz(dt):
+    """将datetime对象格式化为带时区信息的ISO字符串"""
+    if dt is None:
+        return None
+    
+    # 如果datetime是naive（没有时区信息），假设它是UTC时间
+    if dt.tzinfo is None:
+        dt = pytz.UTC.localize(dt)
+    
+    # 转换到北京时区
+    dt = dt.astimezone(BEIJING_TZ)
+    
+    return dt.isoformat()
 
 
 # 请求和响应模型
@@ -37,6 +59,7 @@ class NewsResponse(NewsBase):
     publish_date: Optional[str] = None
     fetched_at: str
     created_at: str
+    digests: List[Dict[str, Any]] = []
 
     # 在Pydantic v2中使用model_config
     model_config = {"from_attributes": True}
@@ -81,7 +104,30 @@ def news_to_dict(news: News, db: Session = None) -> dict:
         source = db.query(Source).filter(Source.id == news.source_id).first()
         if source:
             source_name = source.name
-    
+
+    # 获取所属快报信息 - 通过SQL查询
+    digests_info = []
+    if db:
+        try:
+            from app.models.digest import Digest
+            # 直接查询包含此新闻的快报
+            digests_query = db.query(Digest).join(
+                Digest.news_items
+            ).filter(News.id == news.id).all()
+
+            for digest in digests_query:
+                digests_info.append({
+                    "id": digest.id,
+                    "title": digest.title,
+                    "date": format_datetime_with_tz(digest.date),
+                    "created_at": format_datetime_with_tz(digest.created_at)
+                })
+
+            logger.info(f"新闻{news.id}找到{len(digests_info)}个关联快报")
+        except Exception as e:
+            logger.warning(f"查询新闻{news.id}的快报信息时出错: {e}")
+            digests_info = []
+
     return {
         "id": news.id,
         "source_id": news.source_id,
@@ -99,9 +145,10 @@ def news_to_dict(news: News, db: Session = None) -> dict:
         "tokens_usage": news.tokens_usage,
         "is_used_in_digest": news.is_used_in_digest,
         "is_processed": news.is_processed,
-        "publish_date": news.publish_date.isoformat() if news.publish_date else None,
-        "fetched_at": news.fetched_at.isoformat() if news.fetched_at else None,
-        "created_at": news.created_at.isoformat() if news.created_at else None,
+        "publish_date": format_datetime_with_tz(news.publish_date),
+        "fetched_at": format_datetime_with_tz(news.fetched_at),
+        "created_at": format_datetime_with_tz(news.created_at),
+        "digests": digests_info
     }
 
 
@@ -113,6 +160,7 @@ def get_news_list(
     source_id: Optional[int] = None,
     exclude_source_id: Optional[List[int]] = Query(None, description="Source IDs to exclude"),
     category: Optional[str] = None,
+    keyword: Optional[str] = Query(None, description="关键词，匹配标题/摘要/生成标题/生成摘要"),
     is_processed: Optional[bool] = None,
     is_used_in_digest: Optional[bool] = None,
     start_date: Optional[datetime] = None,
@@ -156,6 +204,18 @@ def get_news_list(
             # 如果转换失败，返回空结果
             query = query.filter(News.id == -1)
 
+    # 关键词模糊匹配（标题/摘要/生成标题/生成摘要）
+    if keyword is not None and str(keyword).strip() != "":
+        kw = f"%{str(keyword).strip()}%"
+        query = query.filter(
+            or_(
+                News.title.ilike(kw),
+                News.summary.ilike(kw),
+                News.generated_title.ilike(kw),
+                News.generated_summary.ilike(kw),
+            )
+        )
+
     if is_processed is not None:
         query = query.filter(News.is_processed == is_processed)
 
@@ -195,6 +255,38 @@ def get_news_list(
     return {"total": total, "items": news_dicts}
 
 
+# 兼容无尾斜杠路径 /api/news
+@router.get("", response_model=NewsListResponse)
+def get_news_list_no_slash(
+    skip: int = 0,
+    limit: int = 20,
+    source_id: Optional[int] = None,
+    exclude_source_id: Optional[List[int]] = Query(None, description="Source IDs to exclude"),
+    category: Optional[str] = None,
+    keyword: Optional[str] = Query(None, description="关键词，匹配标题/摘要/生成标题/生成摘要"),
+    is_processed: Optional[bool] = None,
+    is_used_in_digest: Optional[bool] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    enable_similarity_filter: bool = Query(False, description="是否启用相似度过滤，管理页面建议设为false"),
+    db: Session = Depends(get_db),
+):
+    return get_news_list(
+        skip=skip,
+        limit=limit,
+        source_id=source_id,
+        exclude_source_id=exclude_source_id,
+        category=category,
+        keyword=keyword,
+        is_processed=is_processed,
+        is_used_in_digest=is_used_in_digest,
+        start_date=start_date,
+        end_date=end_date,
+        enable_similarity_filter=enable_similarity_filter,
+        db=db,
+    )
+
+
 @router.get("/recent", response_model=NewsListResponse)
 def get_recent_news(
     hours: int = 24,
@@ -204,6 +296,7 @@ def get_recent_news(
     source_id: Optional[int] = None,
     exclude_source_id: Optional[List[int]] = Query(None, description="Source IDs to exclude"),
     category: Optional[List[str]] = Query(None, description="Category filters, can specify multiple"),
+    since_yesterday_digest: bool = Query(False, description="使用昨天最后一次快报时间作为开始时间"),
     db: Session = Depends(get_db),
 ):
     """获取最近一段时间的新闻，用于生成快报"""
@@ -213,8 +306,42 @@ def get_recent_news(
     except (ValueError, TypeError):
         skip = 0
 
-    current_time = datetime.now()
-    start_time = current_time - timedelta(hours=hours)
+    # 获取北京时间的当前时间
+    current_time = datetime.now(BEIJING_TZ)
+    
+    # 根据参数决定开始时间
+    if since_yesterday_digest:
+        # 获取昨天最后一次快报的时间
+        from app.models.digest import Digest
+        from datetime import time
+        
+        # 构建昨天的日期范围（北京时间）
+        today = current_time.date()
+        yesterday_start_beijing = BEIJING_TZ.localize(datetime.combine(today - timedelta(days=1), time.min))
+        yesterday_end_beijing = BEIJING_TZ.localize(datetime.combine(today, time.min))
+        
+        # 转换为UTC时间进行数据库查询（因为数据库存储的是UTC时间）
+        yesterday_start_utc = yesterday_start_beijing.astimezone(pytz.UTC).replace(tzinfo=None)
+        yesterday_end_utc = yesterday_end_beijing.astimezone(pytz.UTC).replace(tzinfo=None)
+        
+        # 查询昨天创建的最后一个快报
+        last_digest = (
+            db.query(Digest)
+            .filter(Digest.created_at >= yesterday_start_utc)
+            .filter(Digest.created_at < yesterday_end_utc)
+            .order_by(Digest.created_at.desc())
+            .first()
+        )
+        
+        if last_digest:
+            start_time = last_digest.created_at
+        else:
+            # 如果昨天没有快报，使用昨天开始时间（UTC）
+            start_time = yesterday_start_utc
+    else:
+        # 对于普通时间范围查询，需要转换为UTC时间与数据库比较
+        start_time_beijing = current_time - timedelta(hours=hours)
+        start_time = start_time_beijing.astimezone(pytz.UTC).replace(tzinfo=None)
 
     query = db.query(News).filter(News.created_at >= start_time)
 
@@ -281,6 +408,7 @@ def get_recent_news_grouped(
     source_id: Optional[int] = None,
     exclude_source_id: Optional[List[int]] = Query(None, description="Source IDs to exclude"),
     category: Optional[List[str]] = Query(None, description="Category filters, can specify multiple"),
+    since_yesterday_digest: bool = Query(False, description="使用昨天最后一次快报时间作为开始时间"),
     db: Session = Depends(get_db),
 ):
     """
@@ -293,6 +421,36 @@ def get_recent_news_grouped(
         # 使用预计算的事件分组（性能优化）
         from app.services.news_similarity_storage import news_similarity_storage_service
         
+        # 计算起始时间
+        if since_yesterday_digest:
+            # 获取昨天最后一次快报的时间
+            from app.models.digest import Digest
+            from datetime import time
+            
+            # 获取北京时间的当前时间
+            current_time = datetime.now(BEIJING_TZ)
+            # 构建昨天的日期范围（北京时间）
+            today = current_time.date()
+            yesterday_start = BEIJING_TZ.localize(datetime.combine(today - timedelta(days=1), time.min))
+            yesterday_end = BEIJING_TZ.localize(datetime.combine(today, time.min))
+            
+            # 查询昨天创建的最后一个快报
+            last_digest = (
+                db.query(Digest)
+                .filter(Digest.created_at >= yesterday_start)
+                .filter(Digest.created_at < yesterday_end)
+                .order_by(Digest.created_at.desc())
+                .first()
+            )
+            
+            if last_digest:
+                start_time = last_digest.created_at
+                # 计算从快报时间到现在的小时数
+                hours = int((current_time - start_time).total_seconds() / 3600)
+            else:
+                # 如果昨天没有快报，使用昨天开始时间
+                hours = int((current_time - yesterday_start).total_seconds() / 3600)
+
         groups = news_similarity_storage_service.get_precomputed_groups(
             db=db,
             hours=hours,
@@ -340,8 +498,10 @@ def get_recent_news_grouped(
         logger.error(f"获取预计算分组失败，回退到实时计算: {str(e)}")
         
         # 回退到实时计算（保持兼容性）
-        current_time = datetime.now()
-        start_time = current_time - timedelta(hours=hours)
+        current_time = datetime.now(BEIJING_TZ)
+        # 对于普通时间范围查询，需要转换为UTC时间与数据库比较
+        start_time_beijing = current_time - timedelta(hours=hours)
+        start_time = start_time_beijing.astimezone(pytz.UTC).replace(tzinfo=None)
         query = db.query(News).filter(News.created_at >= start_time)
         
         if exclude_used:
@@ -404,6 +564,7 @@ def get_recent_news_separated(
     source_id: Optional[int] = None,
     exclude_source_id: Optional[List[int]] = Query(None, description="Source IDs to exclude"),
     category: Optional[List[str]] = Query(None, description="Category filters, can specify multiple"),
+    since_yesterday_digest: bool = Query(False, description="使用昨天最后一次快报时间作为开始时间"),
     db: Session = Depends(get_db),
 ):
     """获取最近一段时间的新闻，分离显示：今日新文章 vs 与历史快报相似的文章"""
@@ -413,8 +574,42 @@ def get_recent_news_separated(
     except (ValueError, TypeError):
         skip = 0
 
-    current_time = datetime.now()
-    start_time = current_time - timedelta(hours=hours)
+    # 获取北京时间的当前时间
+    current_time = datetime.now(BEIJING_TZ)
+    
+    # 根据参数决定开始时间
+    if since_yesterday_digest:
+        # 获取昨天最后一次快报的时间
+        from app.models.digest import Digest
+        from datetime import time
+        
+        # 构建昨天的日期范围（北京时间）
+        today = current_time.date()
+        yesterday_start_beijing = BEIJING_TZ.localize(datetime.combine(today - timedelta(days=1), time.min))
+        yesterday_end_beijing = BEIJING_TZ.localize(datetime.combine(today, time.min))
+        
+        # 转换为UTC时间进行数据库查询（因为数据库存储的是UTC时间）
+        yesterday_start_utc = yesterday_start_beijing.astimezone(pytz.UTC).replace(tzinfo=None)
+        yesterday_end_utc = yesterday_end_beijing.astimezone(pytz.UTC).replace(tzinfo=None)
+        
+        # 查询昨天创建的最后一个快报
+        last_digest = (
+            db.query(Digest)
+            .filter(Digest.created_at >= yesterday_start_utc)
+            .filter(Digest.created_at < yesterday_end_utc)
+            .order_by(Digest.created_at.desc())
+            .first()
+        )
+        
+        if last_digest:
+            start_time = last_digest.created_at
+        else:
+            # 如果昨天没有快报，使用昨天开始时间（UTC）
+            start_time = yesterday_start_utc
+    else:
+        # 对于普通时间范围查询，需要转换为UTC时间与数据库比较
+        start_time_beijing = current_time - timedelta(hours=hours)
+        start_time = start_time_beijing.astimezone(pytz.UTC).replace(tzinfo=None)
 
     query = db.query(News).filter(News.created_at >= start_time)
 
@@ -489,9 +684,10 @@ def get_today_news_count(db: Session = Depends(get_db)):
     """获取今日新闻数量"""
     from datetime import datetime, time
     
-    # 获取今天的开始时间
-    today = datetime.now().date()
-    today_start = datetime.combine(today, time.min)
+    # 获取北京时间的今天开始时间，然后转换为UTC与数据库比较
+    today_beijing = datetime.now(BEIJING_TZ).date()
+    today_start_beijing = BEIJING_TZ.localize(datetime.combine(today_beijing, time.min))
+    today_start = today_start_beijing.astimezone(pytz.UTC).replace(tzinfo=None)
     
     count = db.query(News).filter(News.created_at >= today_start).count()
     return {"count": count}
@@ -500,7 +696,10 @@ def get_today_news_count(db: Session = Depends(get_db)):
 @router.get("/{news_id}", response_model=NewsResponse)
 def get_news_detail(news_id: int, db: Session = Depends(get_db)):
     """获取新闻详情"""
-    db_news = db.query(News).filter(News.id == news_id).first()
+    from sqlalchemy.orm import selectinload
+
+    # 预加载关联的快报信息
+    db_news = db.query(News).options(selectinload(News.digests)).filter(News.id == news_id).first()
 
     if db_news is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="新闻不存在")
@@ -541,9 +740,17 @@ def mark_news_as_used(news_id: int, db: Session = Depends(get_db)):
     if db_news is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="新闻不存在")
 
-    db_news.is_used_in_digest = True
-    db.commit()
-    db.refresh(db_news)
+    try:
+        db_news.is_used_in_digest = True
+        db.commit()
+        db.refresh(db_news)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"标记新闻为已使用失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"标记新闻为已使用失败: {str(e)}",
+        )
 
     # 手动转换ORM对象到字典
     return news_to_dict(db_news, db)
@@ -557,9 +764,17 @@ def mark_news_as_unused(news_id: int, db: Session = Depends(get_db)):
     if db_news is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="新闻不存在")
 
-    db_news.is_used_in_digest = False
-    db.commit()
-    db.refresh(db_news)
+    try:
+        db_news.is_used_in_digest = False
+        db.commit()
+        db.refresh(db_news)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"标记新闻为未使用失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"标记新闻为未使用失败: {str(e)}",
+        )
 
     # 手动转换ORM对象到字典
     return news_to_dict(db_news, db)
@@ -582,12 +797,20 @@ def batch_delete_news(request: BatchNewsIds, db: Session = Depends(get_db)):
     logging.info(f"批量删除新闻，ID列表: {request.news_ids}")
 
     # 执行批量删除
-    deleted_count = (
-        db.query(News)
-        .filter(News.id.in_(request.news_ids))
-        .delete(synchronize_session=False)
-    )
-    db.commit()
+    try:
+        deleted_count = (
+            db.query(News)
+            .filter(News.id.in_(request.news_ids))
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"批量删除新闻失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"批量删除新闻失败: {str(e)}",
+        )
 
     # 返回删除结果
     return {"detail": f"成功删除 {deleted_count} 条新闻"}

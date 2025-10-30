@@ -5,11 +5,13 @@ from pydantic import BaseModel
 from datetime import datetime, date
 import os
 import markdown
+import pytz
 
 from app.db.session import get_db
 from app.models.digest import Digest
 from app.models.news import News, NewsCategory
 from app.services.digest_generator import create_digest_content, generate_pdf
+from app.services.duplicate_detector import duplicate_detector_service
 from app.api.endpoints.news import news_to_dict
 from app.config.paths import get_pdf_absolute_path
 from app.config import get_logger
@@ -17,6 +19,24 @@ from app.config import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+# 北京时区
+BEIJING_TZ = pytz.timezone('Asia/Shanghai')
+
+def format_datetime_with_tz(dt):
+    """将datetime对象格式化为带时区信息的ISO字符串"""
+    if dt is None:
+        return None
+    
+    # 如果datetime是naive（没有时区信息），假设它是UTC时间
+    if dt.tzinfo is None:
+        import pytz
+        dt = pytz.UTC.localize(dt)
+    
+    # 转换到北京时区
+    dt = dt.astimezone(BEIJING_TZ)
+    
+    return dt.isoformat()
 
 # 请求和响应模型
 class DigestBase(BaseModel):
@@ -52,6 +72,7 @@ class DigestNewsResponse(BaseModel):
 
 class DigestDetailResponse(DigestResponse):
     news_items: List[DigestNewsResponse] = []
+    news_ids: List[int] = []  # 关联新闻的ID列表，用于前端判断哪些新闻可以查看详情
 
 class DigestPreviewRequest(BaseModel):
     content: str
@@ -64,30 +85,56 @@ def digest_to_dict(digest: Digest) -> dict:
     return {
         "id": digest.id,
         "title": digest.title,
-        "date": digest.date.isoformat() if digest.date else None,
+        "date": format_datetime_with_tz(digest.date),
         "content": digest.content,
         "pdf_path": digest.pdf_path,
         "news_counts": digest.news_counts,
-        "created_at": digest.created_at.isoformat() if digest.created_at else None
+        "created_at": format_datetime_with_tz(digest.created_at)
     }
 
-def digest_detail_to_dict(digest: Digest) -> dict:
-    """将数据库Digest模型转换为详细响应字典，包括关联的新闻"""
+def digest_detail_to_dict(digest: Digest, db: Session = None) -> dict:
+    """将数据库Digest模型转换为详细响应字典，包括关联的新闻和重复检测状态"""
     # 基本信息
     digest_dict = digest_to_dict(digest)
-    
+
+    # 获取重复检测状态
+    duplicate_status = {}
+    if db:
+        try:
+            duplicate_status = duplicate_detector_service.get_duplicate_detection_status(digest.id, db)
+        except Exception as e:
+            logger.warning(f"获取重复检测状态失败: {e}")
+
     # 添加关联的新闻条目
     news_items = []
+    news_ids = []
     for news in digest.news_items:
-        news_items.append({
+        news_item = {
             "id": news.id,
             "title": news.title,
             "generated_title": news.generated_title or "",
             "generated_summary": news.generated_summary or "",
             "category": news.category.value if news.category else "其他"
-        })
-    
+        }
+
+        # 添加重复检测状态
+        if news.id in duplicate_status:
+            news_item["duplicate_detection"] = duplicate_status[news.id]
+        else:
+            # 如果没有检测记录，设置默认状态
+            news_item["duplicate_detection"] = {
+                "status": "checking",
+                "duplicate_with_news_id": None,
+                "similarity_score": None,
+                "llm_reasoning": None,
+                "checked_at": None
+            }
+
+        news_items.append(news_item)
+        news_ids.append(news.id)
+
     digest_dict["news_items"] = news_items
+    digest_dict["news_ids"] = news_ids
     return digest_dict
 
 # API端点
@@ -101,6 +148,16 @@ def get_digests(
     digests = db.query(Digest).order_by(Digest.date.desc()).offset(skip).limit(limit).all()
     # 手动转换ORM对象到字典
     return [digest_to_dict(digest) for digest in digests]
+
+
+# 兼容无尾斜杠路径 /api/digest
+@router.get("", response_model=List[DigestResponse])
+def get_digests_no_slash(
+    skip: int = 0,
+    limit: int = 20,
+    db: Session = Depends(get_db)
+):
+    return get_digests(skip=skip, limit=limit, db=db)
 
 @router.post("/", response_model=DigestResponse, status_code=status.HTTP_201_CREATED)
 def create_digest(digest_create: DigestCreate, db: Session = Depends(get_db)):
@@ -131,19 +188,44 @@ def create_digest(digest_create: DigestCreate, db: Session = Depends(get_db)):
         news_counts=category_counts
     )
     
-    # 关联新闻
-    digest.news_items = selected_news
-    
-    # 标记所有相关新闻为已使用
-    for news in selected_news:
-        news.is_used_in_digest = True
-    
-    db.add(digest)
-    db.commit()
-    db.refresh(digest)
-    
+    try:
+        # 关联新闻
+        digest.news_items = selected_news
+        
+        # 标记所有相关新闻为已使用
+        for news in selected_news:
+            news.is_used_in_digest = True
+        
+        db.add(digest)
+        db.commit()
+        db.refresh(digest)
+
+        # 启动异步重复检测
+        try:
+            duplicate_detector_service.detect_duplicates_for_digest(
+                digest.id, digest_create.selected_news_ids
+            )
+            logger.info(f"已启动快报 {digest.id} 的重复检测")
+        except Exception as e:
+            logger.warning(f"启动重复检测失败: {e}")
+            # 不影响快报创建的主要流程
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"创建快报失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"创建快报失败: {str(e)}",
+        )
+
     # 手动转换ORM对象到字典
     return digest_to_dict(digest)
+
+
+# 兼容无尾斜杠路径 POST /api/digest
+@router.post("", response_model=DigestResponse, status_code=status.HTTP_201_CREATED)
+def create_digest_no_slash(digest_create: DigestCreate, db: Session = Depends(get_db)):
+    return create_digest(digest_create, db)
 
 @router.get("/latest", response_model=Optional[DigestResponse])
 def get_latest_digest(db: Session = Depends(get_db)):
@@ -165,6 +247,45 @@ def get_digests_count(db: Session = Depends(get_db)):
     count = db.query(Digest).count()
     return {"count": count}
 
+@router.get("/yesterday/last-created")
+def get_yesterday_last_digest_time(db: Session = Depends(get_db)):
+    """获取昨天最后一次生成快报的时间"""
+    from datetime import datetime, timedelta, time
+    
+    # 获取北京时间的当前时间
+    now_beijing = datetime.now(BEIJING_TZ)
+    today = now_beijing.date()
+    
+    # 构建昨天的日期范围（北京时间）
+    yesterday_start_beijing = BEIJING_TZ.localize(datetime.combine(today - timedelta(days=1), time.min))
+    yesterday_end_beijing = BEIJING_TZ.localize(datetime.combine(today, time.min))
+    
+    # 转换为UTC时间进行数据库查询（因为数据库存储的是UTC时间）
+    yesterday_start_utc = yesterday_start_beijing.astimezone(pytz.UTC).replace(tzinfo=None)
+    yesterday_end_utc = yesterday_end_beijing.astimezone(pytz.UTC).replace(tzinfo=None)
+    
+    # 查询昨天创建的最后一个快报
+    last_digest = (
+        db.query(Digest)
+        .filter(Digest.created_at >= yesterday_start_utc)
+        .filter(Digest.created_at < yesterday_end_utc)
+        .order_by(Digest.created_at.desc())
+        .first()
+    )
+    
+    if not last_digest:
+        return {
+            "has_digest": False,
+            "last_digest_time": None,
+            "message": "昨天没有生成任何快报"
+        }
+    
+    return {
+        "has_digest": True,
+        "last_digest_time": format_datetime_with_tz(last_digest.created_at),
+        "message": f"昨天最后一次快报生成于 {format_datetime_with_tz(last_digest.created_at)}"
+    }
+
 @router.get("/{digest_id}", response_model=DigestDetailResponse)
 def get_digest(digest_id: int, db: Session = Depends(get_db)):
     """获取特定快报详情"""
@@ -177,7 +298,7 @@ def get_digest(digest_id: int, db: Session = Depends(get_db)):
         )
     
     # 手动转换ORM对象到详细字典
-    return digest_detail_to_dict(digest)
+    return digest_detail_to_dict(digest, db)
 
 @router.put("/{digest_id}", response_model=DigestResponse)
 def update_digest(digest_id: int, digest_update: DigestUpdate, db: Session = Depends(get_db)):
@@ -209,11 +330,19 @@ def update_digest(digest_id: int, digest_update: DigestUpdate, db: Session = Dep
         digest.pdf_path = None
         logger.info(f"快报 {digest_id} 内容已更新，PDF路径已清除")
     
-    for key, value in update_data.items():
-        setattr(digest, key, value)
-    
-    db.commit()
-    db.refresh(digest)
+    try:
+        for key, value in update_data.items():
+            setattr(digest, key, value)
+        
+        db.commit()
+        db.refresh(digest)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"更新快报失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"更新快报失败: {str(e)}",
+        )
     
     # 手动转换ORM对象到字典
     return digest_to_dict(digest)
@@ -252,9 +381,17 @@ def generate_digest_pdf(
         )
     
     # 更新快报记录的PDF路径
-    digest.pdf_path = pdf_path
-    db.commit()
-    db.refresh(digest)
+    try:
+        digest.pdf_path = pdf_path
+        db.commit()
+        db.refresh(digest)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"更新PDF路径失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"更新PDF路径失败: {str(e)}",
+        )
     
     # 手动转换ORM对象到字典
     return digest_to_dict(digest)
@@ -417,11 +554,203 @@ def preview_digest_content(preview_request: DigestPreviewRequest):
             }
         }
     )
-    
+
     html_content = md.convert(preview_request.content or '')
-    
+
     return {
         "title": preview_request.title,
         "date": preview_request.date,
         "content": html_content
     }
+
+@router.get("/{digest_id}/duplicate-detection-status")
+def get_duplicate_detection_status(digest_id: int, db: Session = Depends(get_db)):
+    """获取快报的重复检测状态"""
+    digest = db.query(Digest).filter(Digest.id == digest_id).first()
+
+    if not digest:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="快报不存在"
+        )
+
+    try:
+        status_dict = duplicate_detector_service.get_duplicate_detection_status(digest_id, db)
+        return {
+            "digest_id": digest_id,
+            "detection_status": digest.duplicate_detection_status,
+            "duplicate_detection_results": status_dict
+        }
+    except Exception as e:
+        logger.error(f"获取重复检测状态失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取重复检测状态失败: {str(e)}"
+        )
+
+@router.post("/{digest_id}/retrigger-duplicate-detection")
+def retrigger_duplicate_detection(digest_id: int, db: Session = Depends(get_db)):
+    """重新触发快报的重复检测"""
+    digest = db.query(Digest).filter(Digest.id == digest_id).first()
+
+    if not digest:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="快报不存在"
+        )
+
+    try:
+        # 获取快报中的所有新闻ID
+        selected_news_ids = [news.id for news in digest.news_items]
+
+        if not selected_news_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="快报中没有新闻"
+            )
+
+        # 清除之前的检测结果
+        from app.models.duplicate_detection import DuplicateDetectionResult
+        db.query(DuplicateDetectionResult).filter(
+            DuplicateDetectionResult.digest_id == digest_id
+        ).delete()
+        db.commit()
+
+        # 重新启动异步重复检测
+        duplicate_detector_service.detect_duplicates_for_digest(
+            digest.id, selected_news_ids
+        )
+
+        logger.info(f"已重新启动快报 {digest.id} 的重复检测")
+
+        return {
+            "message": f"已重新启动快报 {digest_id} 的重复检测",
+            "digest_id": digest_id,
+            "news_count": len(selected_news_ids)
+        }
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"重新触发重复检测失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"重新触发重复检测失败: {str(e)}",
+        )
+
+@router.get("/{digest_id}/duplicate-detection-estimate")
+def get_duplicate_detection_estimate(digest_id: int, db: Session = Depends(get_db)):
+    """获取重复检测时间预估"""
+    digest = db.query(Digest).filter(Digest.id == digest_id).first()
+
+    if not digest:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="快报不存在"
+        )
+
+    try:
+        from app.services.duplicate_detection_timer import detection_timer
+        estimation = detection_timer.estimate_detection_time(digest_id, db)
+
+        return {
+            "digest_id": digest_id,
+            "estimation": {
+                "total_comparisons": estimation.total_comparisons,
+                "estimated_duration_seconds": estimation.estimated_duration,
+                "estimated_duration_minutes": round(estimation.estimated_duration / 60, 1),
+                "avg_llm_call_time": estimation.avg_llm_call_time,
+                "current_news_count": estimation.current_news_count,
+                "reference_news_count": estimation.reference_news_count,
+                "buffer_factor": estimation.buffer_factor,
+                "estimated_completion_time": estimation.estimated_completion_time.isoformat() if estimation.estimated_completion_time else None
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"获取重复检测时间预估失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取时间预估失败: {str(e)}"
+        )
+
+@router.get("/{digest_id}/duplicate-detection-progress")
+def get_duplicate_detection_progress(digest_id: int, db: Session = Depends(get_db)):
+    """获取重复检测进度和剩余时间"""
+    digest = db.query(Digest).filter(Digest.id == digest_id).first()
+
+    if not digest:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="快报不存在"
+        )
+
+    try:
+        from app.services.duplicate_detection_timer import detection_timer
+        progress = detection_timer.get_current_progress(
+            digest_id, db, digest.duplicate_detection_started_at
+        )
+
+        return {
+            "digest_id": digest_id,
+            "detection_status": digest.duplicate_detection_status,
+            "started_at": format_datetime_with_tz(digest.duplicate_detection_started_at),
+            "progress": {
+                "completed_comparisons": progress.completed_comparisons,
+                "total_comparisons": progress.total_comparisons,
+                "current_progress": progress.current_progress,
+                "elapsed_time_seconds": progress.elapsed_time,
+                "elapsed_time_minutes": round(progress.elapsed_time / 60, 1),
+                "estimated_remaining_time_seconds": progress.estimated_remaining_time,
+                "estimated_remaining_time_minutes": round(progress.estimated_remaining_time / 60, 1),
+                "estimated_completion_time": progress.estimated_completion_time.isoformat() if progress.estimated_completion_time else None
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"获取重复检测进度失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取检测进度失败: {str(e)}"
+        )
+
+@router.post("/{digest_id}/duplicate-detection-simulation")
+def simulate_detection_timing(
+    digest_id: int,
+    current_news_count: int = 10,
+    reference_news_count: int = 30,
+    db: Session = Depends(get_db)
+):
+    """模拟检测时间数据（用于测试）"""
+    digest = db.query(Digest).filter(Digest.id == digest_id).first()
+
+    if not digest:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="快报不存在"
+        )
+
+    try:
+        from app.services.duplicate_detection_timer import detection_timer
+
+        # 加载模拟数据
+        detection_timer.load_simulation_data(current_news_count, reference_news_count)
+
+        # 获取统计信息
+        stats = detection_timer.get_timing_statistics()
+
+        return {
+            "digest_id": digest_id,
+            "simulation_params": {
+                "current_news_count": current_news_count,
+                "reference_news_count": reference_news_count
+            },
+            "timing_statistics": stats,
+            "message": f"已加载模拟数据，用于 {current_news_count} 条当前新闻 × {reference_news_count} 条参考新闻的场景"
+        }
+
+    except Exception as e:
+        logger.error(f"模拟检测时间失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"模拟失败: {str(e)}"
+        )

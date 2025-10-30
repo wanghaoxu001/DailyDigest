@@ -18,10 +18,15 @@ import random  # 添加random模块导入
 import re
 import asyncio
 from typing import Any, Optional, Dict, List, Tuple
+from collections import deque
+import html # Added for HTML entity unescaping
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from app.db.session import SessionLocal
 from app.models.source import Source, SourceType
 from app.models.news import News
+from app.models.task_execution import TaskExecution
 from app.services.llm_processor import process_news
 
 # 导入微信文章爬虫和处理器
@@ -51,7 +56,7 @@ html_cleaner.use_automatic_links = False
 
 def clean_html_content(content: str) -> str:
     """
-    清理HTML标记，返回纯文本内容
+    清理HTML标记和Markdown文本标记，返回纯文本内容
     """
     if not content:
         return content
@@ -60,24 +65,107 @@ def clean_html_content(content: str) -> str:
         # 使用html2text清理HTML标记
         cleaned = html_cleaner.handle(content)
         
+        # 移除残留的特殊字符
+        cleaned = re.sub(r'&#\d+;', '', cleaned)  # 移除HTML实体编码
+        cleaned = re.sub(r'&[a-zA-Z]+;', '', cleaned)  # 移除HTML实体名称
+        
+        # 移除Markdown格式标记（在清理换行之前处理）
+        # 移除标题标记 #
+        cleaned = re.sub(r'^\s*#{1,6}\s+', '', cleaned, flags=re.MULTILINE)
+        
+        # 移除引用标记 > 
+        cleaned = re.sub(r'^\s*>\s*', '', cleaned, flags=re.MULTILINE)
+        
+        # 移除列表标记 - 或 * 或 数字.
+        cleaned = re.sub(r'^\s*[-\*\+]\s+', '', cleaned, flags=re.MULTILINE)
+        cleaned = re.sub(r'^\s*\d+\.\s+', '', cleaned, flags=re.MULTILINE)
+        
+        # 移除图片标记 ![alt](url) -> alt (必须在链接标记之前处理)
+        cleaned = re.sub(r'!\[([^\]]*)\]\([^\)]+\)', r'\1', cleaned)
+        
+        # 移除链接标记 [text](url) -> text
+        cleaned = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', cleaned)
+        
+        # 移除粗体标记 **text** 或 __text__
+        cleaned = re.sub(r'\*\*([^\*]+)\*\*', r'\1', cleaned)
+        cleaned = re.sub(r'__([^_]+)__', r'\1', cleaned)
+        
+        # 移除斜体标记 *text* 或 _text_ (注意避免与粗体标记冲突)
+        cleaned = re.sub(r'(?<!\*)\*(?!\*)([^\*]+)\*(?!\*)', r'\1', cleaned)
+        cleaned = re.sub(r'(?<!_)_(?!_)([^_]+)_(?!_)', r'\1', cleaned)
+        
+        # 移除删除线 ~~text~~
+        cleaned = re.sub(r'~~([^~]+)~~', r'\1', cleaned)
+        
+        # 移除行内代码标记 `text`
+        cleaned = re.sub(r'`([^`]+)`', r'\1', cleaned)
+        
         # 清理多余的换行符和空格
         cleaned = re.sub(r'\n\s*\n', '\n', cleaned)  # 移除多余的空行
         cleaned = re.sub(r'\n+', ' ', cleaned)  # 将换行转换为空格
         cleaned = re.sub(r'\s+', ' ', cleaned)  # 合并多个空格
         cleaned = cleaned.strip()
         
-        # 移除残留的特殊字符
-        cleaned = re.sub(r'&#\d+;', '', cleaned)  # 移除HTML实体编码
-        cleaned = re.sub(r'&[a-zA-Z]+;', '', cleaned)  # 移除HTML实体名称
-        
         return cleaned
     except Exception as e:
-        logger.warning(f"清理HTML内容失败: {str(e)}")
+        logger.warning(f"清理HTML内容失败: {str(e)}", exc_info=True)
         # 如果清理失败，至少尝试移除基本的HTML标签
         return re.sub(r'<[^>]+>', '', content)
 
 # 使用全局日志管理器
 from app.config import log_manager
+
+# 常用浏览器请求头（用于绕过基础反爬/Cloudflare页）
+BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+def _create_http_session() -> requests.Session:
+    session = requests.Session()
+    retries = Retry(
+        total=3,
+        backoff_factor=1.0,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods={"GET"},
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retries)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+# ================== 源级日志缓冲（内存） ==================
+# 为每个源维护独立环形缓冲，便于前端精准查看该源日志
+_SOURCE_LOGS: Dict[int, deque[str]] = {}
+_SOURCE_LOGS_LOCK = threading.Lock()
+_SOURCE_LOGS_MAX_LINES = 1000
+
+def _append_source_log(source_id: int, message: str) -> None:
+    try:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        line = f"{ts} - {message}"
+        with _SOURCE_LOGS_LOCK:
+            if source_id not in _SOURCE_LOGS:
+                _SOURCE_LOGS[source_id] = deque(maxlen=_SOURCE_LOGS_MAX_LINES)
+            _SOURCE_LOGS[source_id].append(line)
+    except Exception:
+        pass
+
+def get_source_logs(source_id: int, max_lines: int = 1000) -> List[str]:
+    with _SOURCE_LOGS_LOCK:
+        if source_id not in _SOURCE_LOGS:
+            return []
+        logs = list(_SOURCE_LOGS[source_id])
+        return logs[-max_lines:] if max_lines and max_lines > 0 else logs
+
+def clear_source_logs(source_id: int) -> None:
+    with _SOURCE_LOGS_LOCK:
+        _SOURCE_LOGS[source_id] = deque(maxlen=_SOURCE_LOGS_MAX_LINES)
 
 # 确保NLTK资源文件已下载
 try:
@@ -467,7 +555,7 @@ async def get_wechat_article_data(
     # 1. None (if crawling failed)
     # 2. A dict with "parsed_data" (if custom parser ran), where "parsed_data" contains "news_items"
     # 3. A dict with raw crawled data (if no custom parser matched)
-    processor_result = await process_wechat_url_external(wechat_url)
+    processor_result = await process_wechat_url_external(wechat_url, rss_entry=original_rss_entry)
 
     if not processor_result:
         logger.warning(
@@ -480,6 +568,46 @@ async def get_wechat_article_data(
     if isinstance(custom_parsed_output, dict):
         custom_parsed_items = custom_parsed_output.get("news_items")
 
+    pub_date = datetime.now()
+    crawl_time_str = (
+        custom_parsed_output.get("crawl_time")
+        if isinstance(custom_parsed_output, dict)
+        else None
+    )
+    processor_crawl_time = (
+        processor_result.get("crawl_time")
+        if isinstance(processor_result, dict)
+        else None
+    )
+
+    rss_pub_date_found = False
+    if original_rss_entry and hasattr(original_rss_entry, "published_parsed") and original_rss_entry.published_parsed:
+        try:
+            pub_date = datetime.fromtimestamp(time.mktime(original_rss_entry.published_parsed))
+            logger.info(f"WeChat Article Fetch: Using RSS published time: {pub_date}")
+            rss_pub_date_found = True
+        except (TypeError, ValueError, OverflowError) as e_date:
+            logger.warning(f"WeChat Article Fetch: RSS date parsing failed for {wechat_url}: {str(e_date)}", exc_info=True)
+
+    if not rss_pub_date_found and crawl_time_str:
+        try:
+            pub_date = datetime.fromisoformat(crawl_time_str)
+            logger.info(f"WeChat Article Fetch: Using parser crawl_time: {pub_date}")
+            rss_pub_date_found = True
+        except ValueError:
+            logger.warning(
+                f"WeChat Article Fetch: Cannot parse crawl_time '{crawl_time_str}', using current time."
+            )
+
+    if not rss_pub_date_found and processor_crawl_time:
+        try:
+            pub_date = datetime.fromisoformat(processor_crawl_time)
+            logger.info(f"WeChat Article Fetch: Using processor crawl_time: {pub_date}")
+        except ValueError:
+            logger.warning(
+                f"WeChat Article Fetch: Cannot parse processor crawl_time '{processor_crawl_time}', using current time."
+            )
+
     if (
         custom_parsed_items
         and isinstance(custom_parsed_items, list)
@@ -488,36 +616,6 @@ async def get_wechat_article_data(
         logger.info(
             f"WeChat Article Fetch: Specific parser yielded {len(custom_parsed_items)} items for {wechat_url}"
         )
-
-        # 优先级1: RSS条目的发布时间（最高优先级）
-        pub_date = datetime.now()
-        if original_rss_entry and hasattr(original_rss_entry, "published_parsed") and original_rss_entry.published_parsed:
-            try:
-                pub_date = datetime.fromtimestamp(time.mktime(original_rss_entry.published_parsed))
-                logger.info(f"WeChat Article Fetch: Using RSS published time: {pub_date}")
-            except (TypeError, ValueError, OverflowError) as e_date:
-                logger.warning(f"WeChat Article Fetch: RSS date parsing failed for {wechat_url}: {str(e_date)}")
-                # 优先级2: 特定解析器的crawl_time
-                crawl_time_str = custom_parsed_output.get("crawl_time")
-                if crawl_time_str:
-                    try:
-                        pub_date = datetime.fromisoformat(crawl_time_str)
-                        logger.info(f"WeChat Article Fetch: Using parser crawl_time: {pub_date}")
-                    except ValueError:
-                        logger.warning(
-                            f"WeChat Article Fetch: Cannot parse crawl_time '{crawl_time_str}', using current time."
-                        )
-        else:
-            # 优先级2: 特定解析器的crawl_time
-            crawl_time_str = custom_parsed_output.get("crawl_time")
-            if crawl_time_str:
-                try:
-                    pub_date = datetime.fromisoformat(crawl_time_str)
-                    logger.info(f"WeChat Article Fetch: Using parser crawl_time: {pub_date}")
-                except ValueError:
-                    logger.warning(
-                        f"WeChat Article Fetch: Cannot parse crawl_time '{crawl_time_str}', using current time."
-                    )
 
         for item in custom_parsed_items:
             item_title = item.get("title", "无标题")
@@ -546,68 +644,111 @@ async def get_wechat_article_data(
             )
         return processed_articles_data
     else:
-        logger.info(
-            f"WeChat Article Fetch: No specific parser match or no items from parser for {wechat_url}. Falling back to standard processing."
-        )
-
-        # Fallback: Use get_standard_article_data
-        # Prepare a mock feed_entry if original_rss_entry is not available but processor_result has some data
-        fallback_title = "微信文章"
-        fallback_summary = None
-        fallback_published_parsed = None
-        fallback_content_html = processor_result.get(
-            "content", ""
-        )  # Raw HTML content from crawler
-
-        if original_rss_entry:
-            fallback_title = original_rss_entry.title
-            if hasattr(original_rss_entry, "summary"):
-                fallback_summary = original_rss_entry.summary
-            if hasattr(original_rss_entry, "published_parsed"):
-                fallback_published_parsed = original_rss_entry.published_parsed
-        elif processor_result.get("title"):  # Use title from crawler if no RSS entry
-            fallback_title = processor_result.get("title")
-
-        # Construct a temporary feedparser-like dict for fallback_feed_entry
-        temp_fallback_entry = feedparser.FeedParserDict(
-            {
-                "title": fallback_title,
-                "link": wechat_url,
-                "summary": (
-                    fallback_summary
-                    if fallback_summary
-                    else (fallback_content_html[:500] if fallback_content_html else "")
-                ),
-                "published_parsed": fallback_published_parsed,
-                "content": (
-                    [{"type": "text/html", "value": fallback_content_html}]
-                    if fallback_content_html
-                    else []
-                ),
-            }
-        )
-
-        article_data = await get_standard_article_data(
-            article_url=wechat_url,
-            article_title=fallback_title,
-            fallback_feed_entry=temp_fallback_entry,
-        )
-        if article_data:
-            # Mark as WeChat fallback
-            article_data["entities"] = {
-                "wechat_article_fallback": True,
-                "original_wechat_title": fallback_title,
+        # 检查是否使用了RSS内容
+        if processor_result and processor_result.get("source") == "rss_content":
+            logger.info(
+                f"WeChat Article Fetch: Parser returned no items, but using RSS content directly for {wechat_url} (content length: {len(processor_result.get('content', ''))} chars)"
+            )
+            
+            # 从processor_result提取信息
+            content = processor_result.get("content", "")
+            from bs4 import BeautifulSoup
+            
+            # 将HTML转换为纯文本用于摘要
+            try:
+                soup = BeautifulSoup(content, 'html.parser')
+                text_content = soup.get_text()
+                summary = text_content[:500] + "..." if len(text_content) > 500 else text_content
+            except Exception as e:
+                logger.warning(f"Failed to extract text for summary: {str(e)}", exc_info=True)
+                summary = content[:500] + "..." if len(content) > 500 else content
+            
+            article_data = {
+                "title": processor_result.get("title", "微信文章"),
+                "summary": clean_html_content(summary),
+                "content": clean_html_content(content),
+                "original_url": wechat_url,
+                "publish_date": pub_date,
+                "newspaper_keywords": [],
+                "entities": {
+                    "wechat_article_rss": True,
+                    "source": "rss_content",
+                    "digest_date": processor_result.get("digest_date", ""),
+                    "issue_number": processor_result.get("issue_number", ""),
+                    "parser_failed": True,  # 标记解析失败但保留RSS内容
+                },
+                "is_processed": False,
             }
             processed_articles_data.append(article_data)
+            logger.info(
+                f"WeChat Article Fetch: Saved RSS content directly (title: {article_data['title']}, content length: {len(article_data['content'])} chars)"
+            )
+        else:
+            # 原有的fallback逻辑：使用Playwright重新爬取
+            logger.info(
+                f"WeChat Article Fetch: No specific parser match or no items from parser for {wechat_url}. Falling back to standard processing."
+            )
+
+            # Fallback: Use get_standard_article_data
+            # Prepare a mock feed_entry if original_rss_entry is not available but processor_result has some data
+            fallback_title = "微信文章"
+            fallback_summary = None
+            fallback_published_parsed = None
+            fallback_content_html = processor_result.get(
+                "content", ""
+            )  # Raw HTML content from crawler
+
+            if original_rss_entry:
+                fallback_title = original_rss_entry.title
+                if hasattr(original_rss_entry, "summary"):
+                    fallback_summary = original_rss_entry.summary
+                if hasattr(original_rss_entry, "published_parsed"):
+                    fallback_published_parsed = original_rss_entry.published_parsed
+            elif processor_result.get("title"):  # Use title from crawler if no RSS entry
+                fallback_title = processor_result.get("title")
+
+            # Construct a temporary feedparser-like dict for fallback_feed_entry
+            temp_fallback_entry = feedparser.FeedParserDict(
+                {
+                    "title": fallback_title,
+                    "link": wechat_url,
+                    "summary": (
+                        fallback_summary
+                        if fallback_summary
+                        else (fallback_content_html[:500] if fallback_content_html else "")
+                    ),
+                    "published_parsed": fallback_published_parsed,
+                    "content": (
+                        [{"type": "text/html", "value": fallback_content_html}]
+                        if fallback_content_html
+                        else []
+                    ),
+                }
+            )
+
+            article_data = await get_standard_article_data(
+                article_url=wechat_url,
+                article_title=fallback_title,
+                fallback_feed_entry=temp_fallback_entry,
+            )
+            if article_data:
+                # Mark as WeChat fallback
+                article_data["entities"] = {
+                    "wechat_article_fallback": True,
+                    "original_wechat_title": fallback_title,
+                }
+                processed_articles_data.append(article_data)
 
         return processed_articles_data
 
 
-def fetch_rss_feed(source: Source, db: Session):
+def fetch_rss_feed(source: Source, db: Session) -> Tuple[int, bool]:
     logger.info(f"开始抓取RSS: {source.name} ({source.url})")
+    _append_source_log(source.id, f"开始抓取RSS: {source.name} ({source.url})")
     max_retries = 3
     retry_delay = 5
     total_new_articles_from_source = 0
+    session = _create_http_session()
     
     # 获取时间限制，默认3天
     max_fetch_days = getattr(source, 'max_fetch_days', 3)
@@ -617,19 +758,109 @@ def fetch_rss_feed(source: Source, db: Session):
     for attempt in range(max_retries):
         try:
             logger.info(f"尝试第 {attempt+1}/{max_retries} 次抓取 RSS: {source.url}")
-            feed = feedparser.parse(source.url)
+            
+            # 添加请求间隔以避免429错误
+            if attempt > 0:
+                delay = retry_delay * (2 ** attempt)  # 指数退避
+                logger.info(f"等待 {delay} 秒后重试...")
+                time.sleep(delay)
+            
+            # Use requests to get the raw content and then unescape HTML entities
+            # 使用带重试的会话与浏览器头
+            response = session.get(source.url, headers=BROWSER_HEADERS, timeout=30, verify=False)
+            
+            # 检查HTTP状态码
+            if response.status_code == 429:
+                logger.warning(f"收到429错误 (Too Many Requests)，等待更长时间...")
+                _append_source_log(source.id, "收到429错误 (Too Many Requests)，等待更长时间...")
+                # 若已是最后一次重试，则返回错误，避免函数无返回
+                if attempt >= max_retries - 1:
+                    return (-1, True)
+                time.sleep(30)  # 等待30秒
+                continue
+            elif response.status_code >= 400:
+                logger.error(f"HTTP错误 {response.status_code}: {response.text[:200]}")
+                _append_source_log(source.id, f"HTTP错误 {response.status_code}: {response.text[:120]}")
+                if attempt < max_retries - 1:
+                    continue
+                return (-1, True)
+            
+            # 尝试多种解析方法
+            feed = None
+            
+            # 方法1: 直接解析原始内容
+            try:
+                logger.info("尝试直接解析原始内容...")
+                feed = feedparser.parse(response.text)
+                if not hasattr(feed, "bozo_exception") or not feed.bozo_exception:
+                    logger.info("原始内容解析成功")
+                else:
+                    logger.warning(f"原始内容解析有警告: {feed.bozo_exception}", exc_info=True)
+            except Exception as e:
+                logger.warning(f"原始内容解析失败: {e}", exc_info=True)
+            
+            # 方法2: 如果原始内容解析失败，尝试HTML实体解码后解析
+            if not feed or (hasattr(feed, "bozo_exception") and feed.bozo_exception):
+                try:
+                    logger.info("尝试HTML实体解码后解析...")
+                    decoded_content = html.unescape(response.text)
+                    
+                    # 移除可能导致XML解析错误的字符
+                    cleaned_content = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', decoded_content)
+                    
+                    # 尝试修复常见的XML问题
+                    cleaned_content = re.sub(r'&(?![a-zA-Z0-9#]+;)', '&amp;', cleaned_content)
+                    
+                    feed = feedparser.parse(cleaned_content)
+                    if not hasattr(feed, "bozo_exception") or not feed.bozo_exception:
+                        logger.info("HTML实体解码后解析成功")
+                    else:
+                        logger.warning(f"HTML实体解码后解析有警告: {feed.bozo_exception}", exc_info=True)
+                except Exception as e:
+                    logger.warning(f"HTML实体解码后解析失败: {e}", exc_info=True)
+            
+            # 方法3: 如果前两种方法都失败，使用BeautifulSoup清理
+            if not feed or (hasattr(feed, "bozo_exception") and feed.bozo_exception):
+                try:
+                    logger.info("尝试BeautifulSoup清理后解析...")
+                    from bs4 import BeautifulSoup
+                    
+                    # 使用XML解析器
+                    soup = BeautifulSoup(response.text, 'xml')
+                    if soup.find('rss') or soup.find('feed'):
+                        # 如果找到RSS/Atom标签，尝试解析清理后的内容
+                        cleaned_content = str(soup)
+                        feed = feedparser.parse(cleaned_content)
+                        if not hasattr(feed, "bozo_exception") or not feed.bozo_exception:
+                            logger.info("BeautifulSoup清理后解析成功")
+                        else:
+                            logger.warning(f"BeautifulSoup清理后解析有警告: {feed.bozo_exception}", exc_info=True)
+                    else:
+                        logger.warning("BeautifulSoup未找到RSS/Atom标签", exc_info=True)
+                except Exception as e:
+                    logger.warning(f"BeautifulSoup清理后解析失败: {e}", exc_info=True)
+            
+            # 如果所有方法都失败
+            if not feed:
+                logger.error("所有RSS解析方法都失败", exc_info=True)
+                if attempt < max_retries - 1:
+                    continue
+                _append_source_log(source.id, "所有RSS解析方法都失败")
+                return (-1, True)
 
             if hasattr(feed, "bozo_exception") and feed.bozo_exception:
-                logger.error(f"RSS解析失败: {feed.bozo_exception}")
+                logger.error(f"RSS解析失败: {feed.bozo_exception}", exc_info=True)
                 if attempt < max_retries - 1:
                     time.sleep(retry_delay)
                     retry_delay *= 2
                     continue
-                return 0
+                _append_source_log(source.id, f"RSS解析失败: {feed.bozo_exception}")
+                return (-1, True)
 
             if not hasattr(feed, "entries") or not feed.entries:
-                logger.warning(f"RSS源没有条目: {source.url}")
-                return 0
+                logger.warning(f"RSS源没有条目: {source.url}", exc_info=True)
+                _append_source_log(source.id, "RSS源没有条目")
+                return (0, False)
 
             logger.info(f"获取到 {len(feed.entries)} 篇文章从 {source.name}")
 
@@ -665,7 +896,7 @@ def fetch_rss_feed(source: Source, db: Session):
                             )
                             continue
                     except (TypeError, ValueError, OverflowError) as e_time:
-                        logger.warning(f"RSS: 无法解析RSS条目时间，继续处理: {str(e_time)}")
+                        logger.warning(f"RSS: 无法解析RSS条目时间，继续处理: {str(e_time)}", exc_info=True)
 
                 # PRE-FETCH CHECK: Check if this original URL from RSS feed already exists
                 # This check is crucial to avoid re-fetching/re-processing already stored articles
@@ -721,7 +952,7 @@ def fetch_rss_feed(source: Source, db: Session):
                                 try:
                                     article_date = datetime.strptime(article_date, '%Y-%m-%d %H:%M:%S')
                                 except ValueError:
-                                    logger.warning(f"无法解析文章日期: {article_date}")
+                                    logger.warning(f"无法解析文章日期: {article_date}", exc_info=True)
                                     article_date = None
                         
                         # 确保两个datetime对象都是naive的（没有时区信息）以便比较
@@ -800,19 +1031,21 @@ def fetch_rss_feed(source: Source, db: Session):
             logger.info(
                 f"RSS抓取完成: {source.name}, 本次总共添加 {total_new_articles_from_source} 篇新文章"
             )
-            return total_new_articles_from_source
+            _append_source_log(source.id, f"RSS抓取完成: 新增 {total_new_articles_from_source} 篇")
+            return (total_new_articles_from_source, False)
 
         except Exception as e:
             logger.error(
                 f"RSS抓取失败 (尝试 {attempt+1}/{max_retries}): {source.url}, 错误: {str(e)}",
                 exc_info=True,
             )
+            _append_source_log(source.id, f"RSS抓取失败: {str(e)}")
             db.rollback()
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
                 retry_delay *= 2
                 continue
-            return 0
+            return (-1, True)
 
 
 def get_recent_logs(buffer_name: str = 'crawler'):
@@ -825,9 +1058,10 @@ def clear_logs(buffer_name: str = 'crawler'):
     return log_manager.clear_logs(buffer_name)
 
 
-def fetch_webpage(source: Source, db: Session):
+def fetch_webpage(source: Source, db: Session) -> Tuple[int, bool]:
     """抓取网页源"""
     logger.info(f"开始抓取网页: {source.name} ({source.url})")
+    _append_source_log(source.id, f"开始抓取网页: {source.name} ({source.url})")
     max_retries = 3
     retry_delay = 5
     total_new_articles = 0
@@ -926,19 +1160,21 @@ def fetch_webpage(source: Source, db: Session):
             logger.info(
                 f"网页抓取完成: {source.name}, 本次尝试新增 {new_count_this_attempt} 篇文章"
             )
-            return total_new_articles
+            _append_source_log(source.id, f"网页抓取完成: 新增 {new_count_this_attempt} 篇 (累计 {total_new_articles})")
+            return (total_new_articles, False)
 
         except Exception as e_wp_main:
             logger.error(
                 f"网页抓取失败 (尝试 {attempt+1}/{max_retries}): {source.url}, 错误: {str(e_wp_main)}",
                 exc_info=True,
             )
+            _append_source_log(source.id, f"网页抓取失败: {str(e_wp_main)}")
             db.rollback()
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
                 retry_delay *= 2
                 continue
-            return 0
+            return (-1, True)
 
 
 def crawl_source(source_id: int):
@@ -986,10 +1222,11 @@ def crawl_source(source_id: int):
         logger.info(f"开始抓取源: {source.name} (ID: {source_id}), 类型: {source.type.value}")  # type: ignore
 
         new_count = 0
+        had_error = False
         if source.type == SourceType.RSS:  # type: ignore
-            new_count = fetch_rss_feed(source, db)  # type: ignore
+            new_count, had_error = fetch_rss_feed(source, db)  # type: ignore
         elif source.type == SourceType.WEBPAGE:  # type: ignore
-            new_count = fetch_webpage(source, db)  # type: ignore
+            new_count, had_error = fetch_webpage(source, db)  # type: ignore
         else:
             logger.error(f"不支持的源类型: {source.type}")  # type: ignore
             # ... (rest of unsupported type logic)
@@ -1001,7 +1238,7 @@ def crawl_source(source_id: int):
             return result
 
         # After fetching, if new_count > 0, process them
-        if new_count > 0:
+        if new_count > 0 and not had_error:
             logger.info(f"成功抓取 {new_count} 篇新文章，开始LLM处理...")
             try:
                 process_new_articles(source_id, db)  # Pass source_id
@@ -1009,11 +1246,11 @@ def crawl_source(source_id: int):
                 logger.error(f"处理新文章失败: {str(e_proc)}", exc_info=True)
         else:
             logger.info(f"源 {source.name} 没有抓取到新文章")  # type: ignore
+        if had_error:
+            logger.warning("抓取过程中发生错误（已记录详细日志）", exc_info=True)
 
         execution_time = (datetime.now() - start_time).total_seconds()
-        final_result_status = (
-            "success" if new_count >= 0 else "error"
-        )  # if new_count is 0, it's still success (no new articles)
+        final_result_status = "error" if had_error else "success"
 
         final_result = {
             "status": final_result_status,
@@ -1051,7 +1288,7 @@ def crawl_source(source_id: int):
                 source.last_fetch_result = error_result  # type: ignore
                 db.commit()
             except Exception as ex_commit:
-                logger.error(f"更新源状态失败 after error: {str(ex_commit)}")
+                logger.error(f"更新源状态失败 after error: {str(ex_commit)}", exc_info=True)
                 db.rollback()  # Rollback the failed status update attempt
 
         return {
@@ -1101,27 +1338,117 @@ def process_new_articles(source_id: int, db: Session):
 
 
 def trigger_source_crawl(source_id: int):
-    # Simplified: directly call crawl_source. In production, this would be a background task.
-    task_id = str(uuid.uuid4())
-    start_time = datetime.now()
-    logger.info(f"同步触发对源 ID {source_id} 的抓取，任务ID: {task_id}")
+    """
+    手动触发单个源的抓取，并创建TaskExecution记录
 
-    result = crawl_source(source_id)  # This now returns a dict
+    Args:
+        source_id: 要抓取的源ID
 
-    end_time = datetime.now()
-    execution_time_val = (end_time - start_time).total_seconds()
+    Returns:
+        包含执行结果的字典，包括execution_id（数据库记录ID）
+    """
+    db = SessionLocal()
+    execution = None
 
-    response = {
-        "task_id": task_id,
-        "status": result.get("status", "unknown"),
-        "message": result.get("message", "未知结果"),
-        "count": result.get("count", 0),
-        "start_time": start_time.isoformat(),
-        "end_time": end_time.isoformat(),
-        "execution_time": result.get("execution_time", f"{execution_time_val:.2f}秒"),
-    }
-    logger.info(f"抓取任务 {task_id} 完成: {response['status']}, {response['message']}")
-    return response
+    try:
+        # 获取源信息
+        source = db.query(Source).filter(Source.id == source_id).first()
+        source_name = source.name if source else f"ID:{source_id}"
+
+        # 创建TaskExecution记录
+        task_id = str(uuid.uuid4())
+        execution = TaskExecution.create_task_start(
+            db=db,
+            task_type='manual_crawl_source',
+            task_id=task_id,
+            message=f'手动触发抓取: {source_name}',
+            details={
+                'source_id': source_id,
+                'source_name': source_name,
+                'trigger_type': 'manual'
+            }
+        )
+
+        logger.info(f"手动触发对源 ID {source_id} ({source_name}) 的抓取，任务ID: {task_id}, 执行记录ID: {execution.id}")
+
+        # 执行抓取
+        result = crawl_source(source_id)
+
+        # 根据抓取结果更新TaskExecution记录
+        status = result.get("status", "unknown")
+        message = result.get("message", "未知结果")
+        count = result.get("count", 0)
+
+        # 确定任务状态
+        if status == "success":
+            task_status = 'success'
+        elif status == "skipped":
+            task_status = 'info'
+        elif status == "error":
+            task_status = 'error'
+        else:
+            task_status = 'warning'
+
+        # 完成TaskExecution记录
+        execution.complete_task(
+            db=db,
+            status=task_status,
+            message=message,
+            details={
+                'source_id': source_id,
+                'source_name': source_name,
+                'trigger_type': 'manual',
+                'crawl_status': status,
+                'articles_found': count
+            },
+            items_processed=1,  # 处理了1个源
+            items_success=1 if status == "success" else 0,
+            items_failed=1 if status == "error" else 0
+        )
+
+        logger.info(f"抓取任务 {task_id} (执行记录 {execution.id}) 完成: {status}, {message}")
+
+        # 返回响应
+        return {
+            "execution_id": execution.id,  # 返回数据库记录ID
+            "task_id": task_id,
+            "status": status,
+            "message": message,
+            "count": count,
+            "start_time": execution.start_time.isoformat(),
+            "end_time": execution.end_time.isoformat() if execution.end_time else None,
+            "execution_time": f"{execution.duration_seconds}秒" if execution.duration_seconds else None,
+        }
+
+    except Exception as e:
+        # 如果有异常，标记任务失败
+        error_msg = f"抓取失败: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+
+        if execution:
+            execution.fail_task(
+                db=db,
+                error_message=error_msg,
+                error_type=type(e).__name__,
+                stack_trace=traceback.format_exc(),
+                details={
+                    'source_id': source_id,
+                    'trigger_type': 'manual'
+                }
+            )
+
+        return {
+            "execution_id": execution.id if execution else None,
+            "task_id": task_id if 'task_id' in locals() else None,
+            "status": "error",
+            "message": error_msg,
+            "count": 0,
+            "start_time": execution.start_time.isoformat() if execution else None,
+            "end_time": execution.end_time.isoformat() if execution and execution.end_time else None,
+            "execution_time": None,
+        }
+    finally:
+        db.close()
 
 
 def schedule_all_crawling():

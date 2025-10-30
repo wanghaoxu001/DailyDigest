@@ -320,6 +320,56 @@ class TaskExecutionService:
             return 0
         finally:
             db.close()
+    
+    # 兼容旧scheduler API的别名方法
+    def get_execution_history(self, limit: int = 20, task_type: Optional[str] = None) -> List[Dict]:
+        """获取执行历史（兼容旧API）"""
+        return self.get_task_executions(task_type=task_type, limit=limit)
+    
+    def get_error_history(self, limit: int = 10) -> List[Dict]:
+        """获取错误历史（兼容旧API）"""
+        return self.get_task_executions(status='error', limit=limit)
+    
+    def get_statistics(self) -> Dict[str, Any]:
+        """获取统计信息（兼容旧API）"""
+        # 获取24小时统计
+        db = SessionLocal()
+        try:
+            since_24h = datetime.now() - timedelta(hours=24)
+            
+            total_24h = db.query(TaskExecution).filter(
+                TaskExecution.start_time >= since_24h
+            ).count()
+            
+            error_24h = db.query(TaskExecution).filter(
+                and_(
+                    TaskExecution.start_time >= since_24h,
+                    TaskExecution.status == 'error'
+                )
+            ).count()
+            
+            running_count = db.query(TaskExecution).filter(
+                TaskExecution.status == 'running'
+            ).count()
+            
+            return {
+                'total_executions_24h': total_24h,
+                'total_errors_24h': error_24h,
+                'running_tasks_count': running_count
+            }
+        except Exception as e:
+            self.logger.error(f"获取统计信息失败: {e}")
+            return {
+                'total_executions_24h': 0,
+                'total_errors_24h': 0,
+                'running_tasks_count': 0
+            }
+        finally:
+            db.close()
+    
+    def get_task_details(self, task_id: int) -> Optional[Dict]:
+        """获取任务详情（兼容旧API）"""
+        return self.get_task_execution_by_id(task_id)
 
 
 # 全局服务实例

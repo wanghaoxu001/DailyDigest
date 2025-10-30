@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict
 from pydantic import BaseModel, HttpUrl, Field
 from datetime import datetime
 import logging
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 from app.db.session import get_db
 from app.models.source import Source, SourceType
@@ -12,10 +16,47 @@ from app.services.crawler import (
     get_recent_logs,
     clear_logs,
     schedule_all_crawling,
+    get_source_logs,
 )
-from app.config import log_manager
+from app.config import log_manager, get_logger
 
 router = APIRouter()
+
+# 模块级logger - 统一在此初始化，避免在函数内重复创建
+logger = get_logger(__name__)
+
+
+def _resolve_project_root() -> str:
+    env_root = os.getenv("PROJECT_ROOT")
+    if env_root:
+        return env_root
+    return str(Path(__file__).resolve().parents[3])
+
+
+def _resolve_python_executable() -> str:
+    return os.getenv("PYTHON_EXECUTABLE") or sys.executable
+
+
+def _run_background_job(
+    script_name: str, env_overrides: Optional[Dict[str, str]] = None
+) -> None:
+    project_root = _resolve_project_root()
+    script_path = os.path.join(project_root, "scripts", "cron_jobs", script_name)
+
+    if not os.path.exists(script_path):
+        raise FileNotFoundError(f"未找到脚本: {script_path}")
+
+    env = os.environ.copy()
+    if env_overrides:
+        env.update(env_overrides)
+
+    subprocess.Popen(
+        [_resolve_python_executable(), script_path],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=project_root,
+        env=env,
+    )
 
 
 # 请求和响应模型
@@ -55,6 +96,7 @@ class SourceResponse(SourceBase):
     id: int
     last_fetch: Optional[str] = None
     last_fetch_status: Optional[str] = None
+    last_fetch_result: Optional[Dict] = None
     tokens_used: Optional[int] = None
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
@@ -126,6 +168,17 @@ def get_sources(
     return [source_to_dict(source) for source in sources]
 
 
+# 兼容无尾斜杠路径 /api/sources
+@router.get("", response_model=List[SourceResponse])
+def get_sources_no_slash(
+    skip: int = 0,
+    limit: int = 100,
+    active_only: bool = False,
+    db: Session = Depends(get_db),
+):
+    return get_sources(skip=skip, limit=limit, active_only=active_only, db=db)
+
+
 # 确保特定路由先定义
 @router.get("/logs", response_model=LogsResponse)
 def get_logs(buffer_name: str = "crawler"):
@@ -143,10 +196,63 @@ def get_logs(buffer_name: str = "crawler"):
         return {"logs": log_lines, "timestamp": datetime.now().isoformat()}
     except Exception as e:
         # 发生错误时返回错误信息
-        logger = logging.getLogger(__name__)
-        logger.error(f"获取日志出错: {str(e)}")
+        logger.error(f"获取 {buffer_name} 缓冲区日志出错: {str(e)}", exc_info=True)
         return {
             "logs": [f"获取日志时发生错误: {str(e)}"],
+            "timestamp": datetime.now().isoformat(),
+        }
+
+
+@router.get("/{source_id}/logs", response_model=LogsResponse)
+def get_logs_by_source(source_id: int, db: Session = Depends(get_db)):
+    """按源ID过滤最近日志（从内存缓冲'crawler'中筛选相关行）"""
+    # 校验源是否存在
+    source = db.query(Source).filter(Source.id == source_id).first()
+    if source is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="新闻源不存在")
+
+    try:
+        # 先从源级专属缓冲取日志
+        source_specific = get_source_logs(source_id, max_lines=1000)
+        if source_specific:
+            return {"logs": source_specific, "timestamp": datetime.now().isoformat()}
+
+        # 回退：从通用crawler缓冲中基于ID和名称匹配
+        log_lines = get_recent_logs("crawler")
+        if not isinstance(log_lines, list):
+            log_lines = [str(log_lines)]
+        else:
+            log_lines = [str(line) if line is not None else "" for line in log_lines]
+
+        import re
+        patterns = [
+            re.compile(rf"\\bID[:：]?\\s*{source_id}\\b"),
+            re.compile(rf"源\\s*ID\\s*{source_id}"),
+            re.compile(rf"\(ID:\\s*{source_id}\)"),
+        ]
+        name_tokens = [getattr(source, "name", None)]
+        name_tokens = [t for t in name_tokens if t]
+
+        def match_line(line: str) -> bool:
+            for p in patterns:
+                if p.search(line):
+                    return True
+            for n in name_tokens:
+                if n and n in line:
+                    return True
+            return False
+
+        filtered = [line for line in log_lines if match_line(line)]
+        if not filtered:
+            filtered = [
+                f"未找到与源(ID: {source_id}, 名称: {source.name})匹配的日志，以下为最近日志片段："
+            ] + log_lines[-200:]
+
+        return {"logs": filtered[-1000:], "timestamp": datetime.now().isoformat()}
+    except Exception as e:
+        logger.error(f"按源获取日志出错: {str(e)}", exc_info=True)
+        return {
+            "logs": [f"按源获取日志时发生错误: {str(e)}"],
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -198,12 +304,26 @@ def create_source(source: SourceCreate, db: Session = Depends(get_db)):
         description=source.description,
     )
 
-    db.add(db_source)
-    db.commit()
-    db.refresh(db_source)
+    try:
+        db.add(db_source)
+        db.commit()
+        db.refresh(db_source)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"创建新闻源失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"创建新闻源失败: {str(e)}",
+        )
 
     # 手动转换为字典
     return source_to_dict(db_source)
+
+
+# 兼容无尾斜杠路径 POST /api/sources
+@router.post("", response_model=SourceResponse, status_code=status.HTTP_201_CREATED)
+def create_source_no_slash(source: SourceCreate, db: Session = Depends(get_db)):
+    return create_source(source, db)
 
 
 @router.get("/{source_id}", response_model=SourceResponse)
@@ -247,11 +367,19 @@ def update_source(
             )
 
     # 应用更新
-    for key, value in update_data.items():
-        setattr(db_source, key, value)
+    try:
+        for key, value in update_data.items():
+            setattr(db_source, key, value)
 
-    db.commit()
-    db.refresh(db_source)
+        db.commit()
+        db.refresh(db_source)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"更新新闻源失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"更新新闻源失败: {str(e)}",
+        )
 
     # 手动转换为字典
     return source_to_dict(db_source)
@@ -267,8 +395,16 @@ def delete_source(source_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND, detail="新闻源不存在"
         )
 
-    db.delete(db_source)
-    db.commit()
+    try:
+        db.delete(db_source)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"删除新闻源失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"删除新闻源失败: {str(e)}",
+        )
 
     return {"detail": "新闻源已删除"}
 
@@ -286,11 +422,12 @@ def crawl_source(source_id: int, db: Session = Depends(get_db)):
     # 触发抓取任务
     result = trigger_source_crawl(source_id)
 
-    # 根据结果状态设置响应
+    # 根据结果状态设置响应，包含execution_id
     response = {
         "detail": f"抓取任务状态: {result['status']}",
         "message": result.get("message", ""),
         "task_id": result.get("task_id", ""),
+        "execution_id": result.get("execution_id", None),  # 添加数据库执行记录ID
         "count": result.get("count", 0),
         "execution_time": result.get("execution_time", ""),
         "status": result.get("status", "unknown"),
@@ -314,8 +451,7 @@ def crawl_all_sources():
         schedule_all_crawling.apply_async(countdown=1)  # 延迟1秒执行，以便API可以快速响应
         return {"detail": "已调度所有活跃新闻源的抓取任务"}
     except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.error(f"调度所有抓取失败: {str(e)}")
+        logger.error(f"调度所有抓取失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"调度所有抓取失败: {str(e)}",
@@ -333,12 +469,20 @@ def reset_source_tokens(source_id: int, db: Session = Depends(get_db)):
         )
 
     # 重置token统计
-    db_source.tokens_used = 0
-    db_source.prompt_tokens = 0
-    db_source.completion_tokens = 0
+    try:
+        db_source.tokens_used = 0
+        db_source.prompt_tokens = 0
+        db_source.completion_tokens = 0
 
-    db.commit()
-    db.refresh(db_source)
+        db.commit()
+        db.refresh(db_source)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"重置token统计失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"重置token统计失败: {str(e)}",
+        )
 
     # 手动转换为字典
     return source_to_dict(db_source)
@@ -346,14 +490,43 @@ def reset_source_tokens(source_id: int, db: Session = Depends(get_db)):
 
 @router.get("/scheduler/status")
 def get_scheduler_status():
-    """获取定时任务调度器状态"""
+    """获取定时任务调度器状态（基于cron和TaskExecution）"""
     try:
-        from app.services.scheduler import scheduler_service
-        status = scheduler_service.get_status()
-        return status
+        from app.services.cron_manager import cron_manager
+        from app.services.task_execution_service import task_execution_service
+        from datetime import datetime
+        
+        # 获取cron配置
+        cron_configs = cron_manager.get_all_configs()
+        
+        # 获取运行中的任务
+        running_tasks = task_execution_service.get_running_tasks()
+        
+        # 获取最近的执行记录（每种任务类型最近一条）
+        recent_executions = {}
+        for task_type in ['crawl_sources', 'event_groups', 'cache_cleanup']:
+            executions = task_execution_service.get_task_executions(
+                task_type=task_type,
+                limit=1
+            )
+            if executions:
+                recent_executions[task_type] = executions[0]
+        
+        # 验证crontab
+        verification = cron_manager.verify_crontab()
+        
+        return {
+            'scheduler_type': 'cron',
+            'cron_verified': verification.get('verified', False),
+            'cron_configs': cron_configs,
+            'running_tasks': running_tasks,
+            'recent_executions': recent_executions,
+            'server_time': datetime.now().isoformat(),
+            'server_timezone': 'CST (UTC+8)'
+        }
+        
     except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.error(f"获取调度器状态失败: {str(e)}")
+        logger.error(f"获取调度器状态失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取调度器状态失败: {str(e)}",
@@ -364,12 +537,11 @@ def get_scheduler_status():
 def get_scheduler_history(limit: int = 20, task_type: Optional[str] = None):
     """获取定时任务执行历史"""
     try:
-        from app.services.scheduler import scheduler_service
-        history = scheduler_service.get_execution_history(limit=limit, task_type=task_type)
+        from app.services.task_execution_service import task_execution_service
+        history = task_execution_service.get_execution_history(limit=limit, task_type=task_type)
         return {"history": history}
     except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.error(f"获取执行历史失败: {str(e)}")
+        logger.error(f"获取执行历史失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取执行历史失败: {str(e)}",
@@ -380,8 +552,8 @@ def get_scheduler_history(limit: int = 20, task_type: Optional[str] = None):
 def get_task_details(task_id: int):
     """获取特定任务的详细信息"""
     try:
-        from app.services.scheduler import scheduler_service
-        details = scheduler_service.get_task_details(task_id)
+        from app.services.task_execution_service import task_execution_service
+        details = task_execution_service.get_task_details(task_id)
         if details is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -391,8 +563,7 @@ def get_task_details(task_id: int):
     except HTTPException:
         raise
     except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.error(f"获取任务详情失败: {str(e)}")
+        logger.error(f"获取任务详情失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取任务详情失败: {str(e)}",
@@ -403,12 +574,11 @@ def get_task_details(task_id: int):
 def get_scheduler_errors(limit: int = 10):
     """获取定时任务错误历史"""
     try:
-        from app.services.scheduler import scheduler_service
-        errors = scheduler_service.get_error_history(limit=limit)
+        from app.services.task_execution_service import task_execution_service
+        errors = task_execution_service.get_error_history(limit=limit)
         return {"errors": errors}
     except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.error(f"获取错误历史失败: {str(e)}")
+        logger.error(f"获取错误历史失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取错误历史失败: {str(e)}",
@@ -419,12 +589,11 @@ def get_scheduler_errors(limit: int = 10):
 def get_scheduler_statistics():
     """获取定时任务统计信息"""
     try:
-        from app.services.scheduler import scheduler_service
-        stats = scheduler_service.get_statistics()
+        from app.services.task_execution_service import task_execution_service
+        stats = task_execution_service.get_statistics()
         return stats
     except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.error(f"获取统计信息失败: {str(e)}")
+        logger.error(f"获取统计信息失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取统计信息失败: {str(e)}",
@@ -432,23 +601,67 @@ def get_scheduler_statistics():
 
 
 @router.post("/scheduler/crawl-now")
-def trigger_crawl_now():
-    """立即触发新闻源抓取任务"""
+def trigger_crawl_now(background_tasks: BackgroundTasks):
+    """
+    立即触发新闻源抓取任务
+
+    使用 FastAPI BackgroundTasks 在主进程中执行，
+    替代原有的 subprocess.Popen 方式
+    """
     try:
-        from app.services.scheduler import scheduler_service
-        result = scheduler_service.run_crawl_sources_now()
-        
-        if result["status"] == "skipped":
-            return {"detail": result["message"], "status": "skipped"}, 409  # Conflict
-        else:
-            return {"detail": result["message"], "status": "started"}, 202  # Accepted
+        from app.services.crawl_tasks import execute_crawl_sources_task
+
+        # 先创建一个占位任务记录，获取execution_id
+        from app.db.session import SessionLocal
+        from app.models.task_execution import TaskExecution
+
+        db = SessionLocal()
+        try:
+            # 检查是否已有任务在运行
+            execution = TaskExecution.acquire_lock(
+                db,
+                'crawl_sources',
+                '手动触发：立即抓取新闻源'
+            )
+
+            if not execution:
+                return {
+                    "status": "running",
+                    "detail": "新闻源抓取任务已在运行中，请稍后再试"
+                }
+
+            execution_id = execution.id
+
+            # 将任务添加到后台执行队列
+            background_tasks.add_task(
+                _background_crawl_sources,
+                execution_id
+            )
+
+            return {
+                "status": "started",
+                "execution_id": execution_id,
+                "detail": "新闻源抓取任务已加入队列"
+            }
+        finally:
+            db.close()
+
     except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.error(f"手动触发抓取失败: {str(e)}")
+        logger.error(f"手动触发抓取失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"手动触发抓取失败: {str(e)}",
         )
+
+
+def _background_crawl_sources(execution_id: int):
+    """后台执行抓取任务的包装函数"""
+    try:
+        from app.services.crawl_tasks import _execute_crawl_logic
+        _execute_crawl_logic(execution_id)
+    except Exception as e:
+        logger.error(f"后台抓取任务执行失败: {e}", exc_info=True)
+        # 错误已在 _execute_crawl_logic 中记录到 TaskExecution
 
 
 class EventGroupsRequest(BaseModel):
@@ -456,84 +669,221 @@ class EventGroupsRequest(BaseModel):
 
 
 @router.post("/scheduler/event-groups-now")
-def trigger_event_groups_now(request: EventGroupsRequest = EventGroupsRequest()):
-    """立即触发事件分组生成任务"""
+def trigger_event_groups_now(background_tasks: BackgroundTasks, request: EventGroupsRequest = EventGroupsRequest()):
+    """
+    立即触发事件分组生成任务
+
+    使用 FastAPI BackgroundTasks 在主进程中执行
+    """
     try:
-        from app.services.scheduler import scheduler_service
-        result = scheduler_service.run_event_generation_now(use_multiprocess=request.use_multiprocess)
-        
+        from app.services.event_group_tasks import execute_event_groups_task
+        from app.db.session import SessionLocal
+        from app.models.task_execution import TaskExecution
+
         method = "多进程" if request.use_multiprocess else "单进程"
-        
-        if result["status"] == "skipped":
-            return {"detail": f"{result['message']} ({method})", "status": "skipped"}, 409  # Conflict
-        else:
-            return {"detail": f"{result['message']} ({method})", "status": "started"}, 202  # Accepted
+
+        db = SessionLocal()
+        try:
+            # 检查是否已有任务在运行
+            execution = TaskExecution.acquire_lock(
+                db,
+                'event_groups',
+                f'手动触发：事件分组任务（{method}）'
+            )
+
+            if not execution:
+                return {
+                    "status": "running",
+                    "detail": "事件分组任务已在运行中，请稍后再试"
+                }
+
+            execution_id = execution.id
+
+            # 将任务添加到后台执行队列
+            background_tasks.add_task(
+                _background_event_groups,
+                execution_id,
+                request.use_multiprocess
+            )
+
+            return {
+                "status": "started",
+                "execution_id": execution_id,
+                "detail": f"事件分组任务已加入队列（{method}计算）"
+            }
+        finally:
+            db.close()
+
     except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.error(f"手动触发事件分组生成失败: {str(e)}")
+        logger.error(f"手动触发事件分组生成失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"手动触发事件分组生成失败: {str(e)}",
         )
 
 
-class SchedulerSettings(BaseModel):
-    crawl_sources_interval: float = Field(ge=0.25, le=24)  # 0.25小时到24小时
-    event_generation_interval: Optional[int] = Field(ge=1, le=24, default=None)  # 1小时到24小时
-
-
-@router.put("/scheduler/settings", status_code=status.HTTP_200_OK)
-def update_scheduler_settings(settings: SchedulerSettings):
-    """更新定时任务设置"""
+def _background_event_groups(execution_id: int, use_multiprocess: bool):
+    """后台执行事件分组任务的包装函数"""
     try:
-        from app.services.scheduler import scheduler_service
-        
-        # 更新新闻源抓取间隔
-        scheduler_service.set_crawl_sources_interval(settings.crawl_sources_interval)
-        
-        # 更新事件生成间隔（如果提供）
-        if settings.event_generation_interval is not None:
-            scheduler_service.set_event_generation_interval(settings.event_generation_interval)
-        
-        return {
-            "detail": f"已更新定时任务设置",
-            "crawl_sources_interval": settings.crawl_sources_interval,
-            "event_generation_interval": settings.event_generation_interval
-        }
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
+        from app.services.event_group_tasks import _execute_event_groups_logic
+        _execute_event_groups_logic(execution_id, use_multiprocess)
     except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.error(f"更新调度器设置失败: {str(e)}")
+        logger.error(f"后台事件分组任务执行失败: {e}", exc_info=True)
+
+
+@router.post("/scheduler/cache-cleanup-now")
+def trigger_cache_cleanup_now(background_tasks: BackgroundTasks):
+    """
+    立即触发缓存清理任务
+
+    使用 FastAPI BackgroundTasks 在主进程中执行
+    """
+    try:
+        from app.services.cache_cleanup_tasks import execute_cache_cleanup_task
+        from app.db.session import SessionLocal
+        from app.models.task_execution import TaskExecution
+
+        db = SessionLocal()
+        try:
+            # 检查是否已有任务在运行
+            execution = TaskExecution.acquire_lock(
+                db,
+                'cache_cleanup',
+                '手动触发：缓存清理任务'
+            )
+
+            if not execution:
+                return {
+                    "status": "running",
+                    "detail": "缓存清理任务已在运行中，请稍后再试"
+                }
+
+            execution_id = execution.id
+
+            # 将任务添加到后台执行队列
+            background_tasks.add_task(
+                _background_cache_cleanup,
+                execution_id
+            )
+
+            return {
+                "status": "started",
+                "execution_id": execution_id,
+                "detail": "缓存清理任务已加入队列"
+            }
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"手动触发缓存清理失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"更新调度器设置失败: {str(e)}",
+            detail=f"手动触发缓存清理失败: {str(e)}",
         )
 
 
-@router.post("/scheduler/clear-task/{task_type}")
-def clear_stuck_task(task_type: str):
-    """清理卡住的任务状态"""
+def _background_cache_cleanup(execution_id: int):
+    """后台执行缓存清理任务的包装函数"""
     try:
-        from app.services.scheduler import scheduler_service
-        result = scheduler_service.clear_stuck_task(task_type)
+        from app.services.cache_cleanup_tasks import _execute_cache_cleanup_logic
+        _execute_cache_cleanup_logic(execution_id)
+    except Exception as e:
+        logger.error(f"后台缓存清理任务执行失败: {e}", exc_info=True)
+
+
+# ==================== 新的Cron配置管理端点 ====================
+
+@router.get("/scheduler/cron-configs")
+def get_cron_configs():
+    """获取所有cron配置"""
+    try:
+        from app.services.cron_manager import cron_manager
+        configs = cron_manager.get_all_configs()
+        return {"configs": configs}
+    except Exception as e:
+        logger.error(f"获取cron配置失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取cron配置失败: {str(e)}",
+        )
+
+
+class CronConfigUpdate(BaseModel):
+    cron_expression: Optional[str] = None
+    enabled: Optional[bool] = None
+    description: Optional[str] = None
+
+
+@router.put("/scheduler/cron-configs/{config_id}")
+def update_cron_config(config_id: int, update_data: CronConfigUpdate):
+    """更新cron配置"""
+    try:
+        from app.services.cron_manager import cron_manager
         
-        if result["status"] == "not_found":
+        result = cron_manager.update_config(
+            config_id,
+            cron_expression=update_data.cron_expression,
+            enabled=update_data.enabled,
+            description=update_data.description
+        )
+        
+        if result['status'] == 'error':
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=result["message"],
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result['message']
             )
         
-        return {"detail": result["message"], "status": result["status"]}
+        return result
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.error(f"清理任务失败: {str(e)}")
+        logger.error(f"更新cron配置失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"清理任务失败: {str(e)}",
+            detail=f"更新cron配置失败: {str(e)}",
+        )
+
+
+@router.post("/scheduler/cron-reload")
+def reload_crontab():
+    """重新加载crontab配置到系统"""
+    try:
+        from app.services.cron_manager import cron_manager
+        result = cron_manager.reload_crontab()
+        
+        if result['status'] == 'error':
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result['message']
+            )
+        
+        # 同时验证安装
+        verification = cron_manager.verify_crontab()
+        result['verification'] = verification
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"重新加载crontab失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"重新加载crontab失败: {str(e)}",
+        )
+
+
+@router.get("/scheduler/cron-verify")
+def verify_crontab():
+    """验证crontab是否正确安装"""
+    try:
+        from app.services.cron_manager import cron_manager
+        result = cron_manager.verify_crontab()
+        return result
+    except Exception as e:
+        logger.error(f"验证crontab失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"验证crontab失败: {str(e)}",
         )

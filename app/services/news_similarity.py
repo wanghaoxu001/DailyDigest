@@ -158,10 +158,17 @@ class NewsSimilarityService:
         return entities_by_type
     
     def calculate_entity_similarity(self, entities1: Dict[str, Set[str]], 
-                                  entities2: Dict[str, Set[str]]) -> float:
-        """计算两个新闻的实体相似度 - 要求所有关键实体都匹配"""
+                                  entities2: Dict[str, Set[str]]) -> Optional[float]:
+        """
+        计算两个新闻的实体相似度 - 要求所有关键实体都匹配
+        
+        返回值：
+        - float (0.0-1.0): 实体相似度分数
+        - None: 实体数量不足，无法基于实体判断相似度
+        """
         if not entities1 or not entities2:
-            return 0.0
+            logger.debug("实体为空，无法进行实体相似度判断")
+            return None  # 改为返回None而不是0.0
         
         # 计算有效实体数量（排除error等无效实体）
         valid_entities1 = {k: v for k, v in entities1.items() if k != 'error' and v}
@@ -170,9 +177,11 @@ class NewsSimilarityService:
         total_entities1 = sum(len(values) for values in valid_entities1.values())
         total_entities2 = sum(len(values) for values in valid_entities2.values())
         
-        # 降低实体数量门槛：至少2个有效实体才进行判断
+        # 实体数量门槛：至少2个有效实体才进行判断
+        # 如果实体不足，返回None表示无法判断（而不是直接返回0.0认为不相似）
         if total_entities1 < 2 or total_entities2 < 2:
-            return 0.0
+            logger.debug(f"实体数量不足（新闻1: {total_entities1}个, 新闻2: {total_entities2}个），将依赖文本相似度判断")
+            return None  # 改为返回None，让调用方决定如何处理
         
         # 只关注最核心的安全实体类型
         critical_entity_types = ['CVE', '漏洞编号', '攻击者', '受害者', '组织', '攻击组织', '黑客组织']
@@ -181,17 +190,18 @@ class NewsSimilarityService:
         entity_types_1 = set(valid_entities1.keys()) & set(critical_entity_types)
         entity_types_2 = set(valid_entities2.keys()) & set(critical_entity_types)
         
-        # 如果两个新闻都没有关键实体，返回0
+        # 如果两个新闻都没有关键实体，无法基于实体判断
         if not entity_types_1 or not entity_types_2:
-            return 0.0
+            logger.debug(f"无关键实体类型，无法基于实体判断（新闻1类型: {entity_types_1}, 新闻2类型: {entity_types_2}）")
+            return None  # 改为返回None，表示无法基于实体判断
         
         # 找出两个新闻共同拥有的关键实体类型
         common_critical_types = entity_types_1 & entity_types_2
         
-        # 如果没有共同的关键实体类型，不相似
+        # 如果没有共同的关键实体类型，认为不相似（这里返回0.0是合理的）
         if not common_critical_types:
             logger.debug(f"实体相似度为0：没有共同的关键实体类型。新闻1实体类型: {entity_types_1}, 新闻2实体类型: {entity_types_2}")
-            return 0.0
+            return 0.0  # 这里保持0.0，因为有实体但完全不同类型
         
         # 新逻辑：要求所有共同的关键实体类型都必须匹配
         weighted_score = 0.0
@@ -338,36 +348,68 @@ class NewsSimilarityService:
         return text
     
     def calculate_overall_similarity(self, news1: News, news2: News) -> float:
-        """计算两个新闻的综合相似度"""
+        """
+        计算两个新闻的综合相似度
+        
+        策略：
+        1. CVE编号相同 -> 高度相似(0.9)
+        2. 标题高度相似 -> 高度相似(0.9)
+        3. 实体相似度判断（如果可用）
+        4. 综合评分（实体+标题+摘要+时间因子）
+        5. 实体不可用时，依赖文本相似度
+        """
         # 提取实体
         entities1 = self.extract_key_entities(news1)
         entities2 = self.extract_key_entities(news2)
         
-        # 计算实体相似度作为门槛判断
+        # 计算实体相似度（可能返回None表示无法判断）
         entity_sim = self.calculate_entity_similarity(entities1, entities2)
         
-        # 特殊情况：如果有相同的CVE编号，直接认为高度相似
+        # 特殊情况1：如果有相同的CVE编号，直接认为高度相似
         if entities1.get('CVE') and entities2.get('CVE'):
             if entities1['CVE'] & entities2['CVE']:
+                logger.debug(f"发现相同CVE: {entities1['CVE'] & entities2['CVE']}")
                 return 0.9
         
-        # 特殊情况：标题高度相似（包括语义相似）认为是同一事件
+        # 特殊情况2：标题高度相似（包括语义相似）认为是同一事件
         title1 = news1.generated_title or news1.title
         title2 = news2.generated_title or news2.title
         title_similarity = self.calculate_text_similarity(title1, title2)
         
         # 降低阈值，因为现在包含了语义相似度，更精确
         if title_similarity >= 0.8:
+            logger.debug(f"标题高度相似: {title_similarity:.3f}")
             return 0.9
         
-        # 实体相似度门槛：只有关键实体匹配才继续判断
+        # ========== 处理实体相似度 ==========
+        # 如果实体相似度为None（实体数量不足或无关键实体），降级到纯文本相似度判断
+        if entity_sim is None:
+            logger.debug("实体相似度不可用，使用纯文本相似度判断")
+            # 纯文本判断：标题60% + 摘要40%
+            title_sim = title_similarity
+            
+            summary1 = news1.generated_summary or news1.summary
+            summary2 = news2.generated_summary or news2.summary
+            summary_sim = self.calculate_text_similarity(summary1[:200], summary2[:200]) if (summary1 and summary2) else 0.0
+            
+            # 时间因子
+            time_diff = abs((news1.created_at - news2.created_at).total_seconds())
+            time_factor = 1.0 if time_diff < 48 * 3600 else 0.8
+            
+            # 纯文本综合相似度
+            text_only_similarity = (title_sim * 0.6 + summary_sim * 0.4) * time_factor
+            logger.debug(f"纯文本相似度: {text_only_similarity:.3f} (标题:{title_sim:.3f}, 摘要:{summary_sim:.3f}, 时间因子:{time_factor:.2f})")
+            return text_only_similarity
+        
         # 如果实体相似度为0（没有关键实体匹配），直接返回不相似
         if entity_sim == 0.0:
+            logger.debug("实体相似度为0，判定为不相似")
             return 0.0
         
         # 设置较低的门槛，因为已经确保有关键实体匹配
         ENTITY_SIMILARITY_THRESHOLD = 0.3
         if entity_sim < ENTITY_SIMILARITY_THRESHOLD:
+            logger.debug(f"实体相似度过低: {entity_sim:.3f}")
             return 0.0
         
         # 只有实体相似度达到门槛才继续计算其他相似度
