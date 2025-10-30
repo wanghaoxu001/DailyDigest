@@ -8,7 +8,7 @@
 
 ### 1. 统一日志配置
 - **问题**: 之前每个模块都有自己的`logging.basicConfig()`配置，导致重复和冲突
-- **解决**: 创建了统一的日志管理器`LogManager`，集中配置所有日志行为
+- **解决**: 基于 `logging.config.dictConfig` 的集中式启动流程，`LogManager` 仅负责缓冲与指标管理，实现启动即生效的统一配置
 
 ### 2. 分级日志存储
 - **文件分离**: 不同类型的日志存储在不同文件中
@@ -24,7 +24,9 @@
   - `crawler`: 爬虫日志
   - `llm`: LLM处理日志
   - `error`: 错误日志
+- **结构化条目**: 缓冲区基于 `deque` 维护 `LogEntry`（包含 timestamp/level/logger/context/text）
 - **线程安全**: 使用锁机制保证并发安全
+- **即时统计**: API 可直接获取级别分布、最新时间戳等指标
 
 ### 4. 日志轮转
 - **自动轮转**: 日志文件达到最大大小时自动轮转
@@ -34,7 +36,8 @@
 ### 5. 结构化日志
 - **JSON格式**: 支持JSON格式的结构化日志输出
 - **上下文信息**: 自动添加模块、函数、行号等上下文信息
-- **请求追踪**: 支持请求ID等上下文追踪
+- **请求追踪**: 支持请求ID、task_id、source_id 等上下文追踪
+- **前端直读**: `/api/logs` 同时返回文本列表与结构化 `entries`，方便前端筛选与高亮
 
 ## 配置选项
 
@@ -67,15 +70,24 @@ from app.config import setup_logging
 
 setup_logging(
     log_level="INFO",           # 日志级别
-    log_dir="logs",            # 日志目录
-    enable_console=True,       # 控制台输出
-    enable_file=True,          # 文件输出
-    enable_json=False,         # JSON格式
-    enable_buffer=True,        # 内存缓冲
-    max_bytes=10*1024*1024,   # 最大文件大小
-    backup_count=5            # 备份数量
+    log_dir="logs",             # 日志目录
+    enable_console=True,         # 控制台输出
+    enable_file=True,            # 文件输出
+    enable_json=False,           # JSON格式
+    enable_buffer=True,          # 内存缓冲环形队列
+    max_bytes=10 * 1024 * 1024,  # 最大文件大小
+    backup_count=5               # 备份数量
 )
+
 ```
+
+### Cron 与脚本入口
+
+定时任务脚本（如 `scripts/cron_jobs/crawl_sources_job.py`）在启动时调用 `setup_logging(enable_buffer=False)` 并使用统一命名的 logger（`scripts.cron_jobs.*`）。这样可以确保：
+
+- 文件输出与主站一致（`logs/cron_*.log` 与任务专属文件）
+- 日志级别、格式、上下文字段保持统一
+- 后续若接入集中式日志系统，可复用相同配置
 
 ## API接口
 

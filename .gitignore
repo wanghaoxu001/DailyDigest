@@ -266,3 +266,39 @@ typora_test_digest_*
 
 # Static PDF directory
 /app/static/pdf/*
+
+# Temporary documentation and reports (added during git cleanup)
+OPTIMIZATION_*.md
+OPTIMIZATION_*.txt
+*_COMPLETE.md
+*_ANALYSIS.md
+*_SUMMARY.md
+*_REPORT.md
+*_INVESTIGATION_*.md
+DIGEST_*_PREFILTER_ANALYSIS.md
+prefilter_validation_report_*.txt
+*_validation_report_*.txt
+
+# Chinese named documents (generated reports)
+每日网安情报*.md
+每日网安情报*.pdf
+
+# Backup and old files
+*.old
+*.bak
+*.backup
+
+# Pip output logs
+=*.*.*
+
+# One-time scripts and debugging tools
+analyze_*.py
+debug_*.py
+diagnose_*.py
+final_test.py
+simple_test.py
+restart_*_emergency.py
+monitor_*.sh
+
+# Shell script outputs
+*.sh.log
