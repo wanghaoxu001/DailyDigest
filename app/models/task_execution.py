@@ -177,4 +177,50 @@ class TaskExecution(Base):
                 self.details = details
                 
         self.updated_at = datetime.now()
-        db.commit() 
+        db.commit()
+
+    @classmethod
+    def acquire_lock(cls, db, task_type: str, message: str = None, details: Dict = None) -> Optional['TaskExecution']:
+        """
+        尝试获取任务锁（数据库锁机制）
+        如果已有同类型任务在运行，返回None
+        否则创建新的运行记录并返回
+        """
+        # 检查是否有同类型任务正在运行
+        running_task = db.query(cls).filter(
+            cls.task_type == task_type,
+            cls.status == 'running'
+        ).first()
+        
+        if running_task:
+            # 已有任务在运行，检查是否是僵尸任务（超过2小时未更新）
+            from datetime import timedelta
+            timeout_threshold = datetime.now() - timedelta(hours=2)
+            
+            if running_task.updated_at and running_task.updated_at < timeout_threshold:
+                # 僵尸任务，强制完成
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"检测到僵尸任务 {running_task.id}，强制完成")
+                
+                running_task.status = 'error'
+                running_task.end_time = datetime.now()
+                running_task.error_message = "任务超时，被后续任务强制终止"
+                running_task.error_type = "task_timeout"
+                if running_task.start_time:
+                    running_task.duration_seconds = int((running_task.end_time - running_task.start_time).total_seconds())
+                db.commit()
+            else:
+                # 正常运行中的任务，返回None表示获取锁失败
+                return None
+        
+        # 创建新任务记录
+        return cls.create_task_start(db, task_type, message=message, details=details)
+
+    @classmethod
+    def release_lock(cls, db, execution_id: int, status: str = 'success', 
+                    message: str = None, details: Dict = None):
+        """释放任务锁（更新任务状态为完成）"""
+        execution = db.query(cls).filter(cls.id == execution_id).first()
+        if execution:
+            execution.complete_task(db, status, message, details) 

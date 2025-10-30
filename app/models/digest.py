@@ -22,10 +22,19 @@ class Digest(Base):
     
     # 关联的新闻
     news_items = relationship("News", secondary=digest_news, backref="digests")
-    
+
+    # 重复检测结果
+    duplicate_detection_results = relationship("DuplicateDetectionResult", back_populates="digest")
+
     # 分类的新闻计数
     news_counts = Column(JSON, nullable=True)  # 例如: {"financial": 3, "major": 5, ...}
-    
+
+    # 重复检测状态: 'pending', 'running', 'completed', 'failed'
+    duplicate_detection_status = Column(String(20), default='pending', nullable=False)
+
+    # 重复检测开始时间
+    duplicate_detection_started_at = Column(DateTime, nullable=True)
+
     # 元数据
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now()) 

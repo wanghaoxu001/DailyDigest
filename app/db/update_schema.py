@@ -17,6 +17,8 @@ from app.db.migrations.add_use_rss_summary import (
 )
 from app.db.migrations.add_use_newspaper import run_migration as run_add_use_newspaper
 from app.db.migrations.add_max_fetch_days import migrate_add_max_fetch_days
+from app.db.migrations.add_duplicate_detection_results import run_migration as run_add_duplicate_detection_results
+from app.db.migrations.add_cron_config import migration_add_cron_config
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -117,6 +119,12 @@ def run_migrations():
 
         # 添加max_fetch_days字段
         migrate_add_max_fetch_days(db_path)
+
+        # 添加重复检测结果表
+        run_add_duplicate_detection_results(db_path)
+
+        # 添加cron配置表
+        migration_add_cron_config()
 
         logger.info("所有迁移脚本执行完成")
         return True

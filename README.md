@@ -27,8 +27,10 @@ python run.py
 ## 📖 文档
 
 详细文档请查看：
-- [项目结构说明](PROJECT_STRUCTURE.md) - 了解项目架构和组织
+- [项目结构说明](PROJECT_STRUCTURE.md) - 了解项目架构和组织  
 - [完整文档](docs/README.md) - 详细使用指南
+- [Docker使用指南](DOCKER_USAGE.md) - Docker部署和使用
+- [部署指南](DEPLOYMENT_GUIDE.md) - 完整部署文档
 - [调度器文档](docs/SCHEDULER_README.md) - 定时任务配置
 - [PDF生成功能](docs/PLAYWRIGHT_PDF_UPDATE.md) - PDF导出功能
 

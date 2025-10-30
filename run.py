@@ -34,13 +34,16 @@ if __name__ == "__main__":
         f"启动每日安全快报系统，访问地址: http://{host if host != '0.0.0.0' else 'localhost'}:{port}"
     )
 
-    # 启动定时任务服务
+    # 初始化cron配置（从数据库读取并安装到系统cron）
     try:
-        from app.services.scheduler import scheduler_service
-        scheduler_service.start()
-        print("定时任务服务已启动")
+        from app.services.cron_manager import cron_manager
+        result = cron_manager.reload_crontab()
+        if result['status'] == 'success':
+            print("✓ Cron配置已加载并安装到系统")
+        else:
+            print(f"⚠ Cron配置加载失败: {result['message']}")
     except Exception as e:
-        print(f"启动定时任务服务失败: {e}")
+        print(f"⚠ 加载cron配置时出错: {e}")
 
     # 启动应用
     uvicorn.run("app.main:app", host=host, port=port, reload=reload)

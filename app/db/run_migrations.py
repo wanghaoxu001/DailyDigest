@@ -18,6 +18,9 @@ from app.db.migrations.add_summary_source import run_migration as add_summary_so
 from app.db.migrations.add_tokens_counter import run_migration as add_tokens_counter
 from app.db.migrations.add_detailed_tokens import run_migration as add_detailed_tokens
 from app.db.migrations.fix_token_decimals import run_migration as fix_token_decimals
+from app.db.migrations.add_sources_autoincrement import (
+    run_migration as add_sources_autoincrement,
+)
 
 def run_all_migrations(db_path="daily_digest.db"):
     """运行所有迁移脚本"""
@@ -86,6 +89,7 @@ def run_migrations(db_path="daily_digest.db"):
     results.append(add_tokens_counter(db_path))
     results.append(add_detailed_tokens(db_path))
     results.append(fix_token_decimals(db_path))
+    results.append(add_sources_autoincrement(db_path))
     
     # 如果有任何一个迁移被执行，则返回True
     return any(results)

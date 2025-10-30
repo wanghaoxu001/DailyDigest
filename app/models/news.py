@@ -58,3 +58,6 @@ class News(Base):
 
     # 关联
     source = relationship("Source")
+
+    # 重复检测结果
+    duplicate_detection_results = relationship("DuplicateDetectionResult", foreign_keys="DuplicateDetectionResult.news_id", back_populates="news")

@@ -13,6 +13,13 @@ OPENAI_MODEL=gpt-3.5-turbo
 # 针对特定任务的模型配置
 OPENAI_TRANSLATION_MODEL=gpt-4-turbo
 OPENAI_SUMMARIZATION_MODEL=gpt-4-turbo
+OPENAI_DUPLICATE_DETECTOR_MODEL=ark-deepseek-r1-250528
+
+# 重复检测预筛选配置（优化性能，减少token消耗）
+# 是否启用预筛选（true=启用，false=禁用）
+ENABLE_DUPLICATE_PREFILTER=true
+# 预筛选相似度阈值（0.0-1.0，推荐0.35，越低越激进）
+DUPLICATE_PREFILTER_THRESHOLD=0.35
 # OpenAI API基础URL，可选，留空使用默认OpenAI官方API
 # 用于接入第三方兼容OpenAI API的服务，例如：
 # OPENAI_API_BASE=https://api.moonshot.cn/v1
