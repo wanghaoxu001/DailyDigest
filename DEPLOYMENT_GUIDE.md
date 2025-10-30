@@ -157,57 +157,98 @@ nohup python run.py > app.log 2>&1 &
 ```bash
 # 确保已安装 Docker 和 Docker Compose
 docker --version
-docker-compose --version
+docker compose --version
 
-# 复制环境配置
-cp envtemplate.txt .env
-# 编辑 .env 文件，添加 OpenAI API Key
+# 复制环境配置模板
+cp env.example .env
+# 编辑 .env 文件，添加 OpenAI API Key 等配置
 
-# 启动所有服务
-docker-compose up -d
+# 生产环境启动 (默认)
+docker compose up -d
+
+# 开发环境启动 (代码挂载，实时更新)
+docker compose --profile dev up
 
 # 查看日志
-docker-compose logs -f daily-digest
+docker compose logs -f daily-digest
 ```
 
-### 2. 构建和管理
+### 2. 环境区分
+
+新的统一配置支持通过环境变量区分开发和生产环境：
 
 ```bash
-# 构建镜像
-docker-compose build
+# 生产环境 (默认)
+BUILD_ENV=production docker compose up -d
 
-# 启动服务
-docker-compose up -d
-
-# 停止服务
-docker-compose down
-
-# 重启服务
-docker-compose restart
-
-# 查看服务状态
-docker-compose ps
+# 开发环境 (代码挂载)
+docker compose --profile dev up
 ```
 
-### 3. 数据持久化
+### 3. 构建和管理
+
+```bash
+# 构建镜像 (生产环境)
+docker compose build
+
+# 构建开发环境镜像
+docker compose --profile dev build daily-digest-dev
+
+# 启动服务
+docker compose up -d                    # 生产环境
+docker compose --profile dev up        # 开发环境
+
+# 停止服务
+docker compose down                     # 停止当前环境
+docker compose --profile dev down      # 停止开发环境
+
+# 重启服务
+docker compose restart daily-digest            # 生产环境
+docker compose --profile dev restart daily-digest-dev  # 开发环境
+
+# 查看服务状态
+docker compose ps
+```
+
+### 4. 快速重启脚本
+
+使用已更新的快速重启脚本：
+
+```bash
+# 开发环境快速重启
+./scripts/quick-restart.sh
+```
+
+脚本会自动：
+- 检查并创建 .env 配置文件
+- 检测服务状态并智能启动或重启
+- 进行健康检查验证
+- 提供调试命令提示
+
+### 5. 数据持久化
 
 Docker 配置自动处理数据持久化：
 
 - **数据库**: `./daily_digest.db` 映射到容器内
-- **数据文件**: `./data` 目录映射到容器内
+- **数据文件**: `./data` 目录映射到容器内  
 - **环境配置**: `./.env` 文件映射到容器内
+- **代码目录**: `./` 映射到容器内 (仅开发环境)
 
-### 4. 容器内调试
+### 6. 容器内调试
 
 使用 `python:3.11` 完整镜像，内置丰富的调试工具：
 
 ```bash
 # 进入运行中的容器进行调试
-docker-compose exec daily-digest bash
+# 生产环境
+docker compose exec daily-digest bash
+
+# 开发环境  
+docker compose --profile dev exec daily-digest-dev bash
 
 # 容器内可用的调试工具包括：
 # - vim/nano (文本编辑)
-# - htop/ps (进程监控)
+# - htop/ps (进程监控)  
 # - curl/wget (网络测试)
 # - netstat/lsof (网络和文件查看)
 # - sqlite3 (数据库客户端)
@@ -218,6 +259,25 @@ docker-compose exec daily-digest bash
 # 查看详细的调试指南
 cat docs/DOCKER_DEBUG.md
 ```
+
+### 7. 配置说明
+
+环境变量配置 (`.env` 文件)：
+
+```env
+# 环境类型
+BUILD_ENV=production        # 或 development
+FLASK_ENV=production       # 或 development
+
+# 端口配置
+PORT=18899                 # 生产环境端口
+DEV_PORT=18899             # 开发环境端口
+
+# 重启策略
+RESTART_POLICY=unless-stopped
+```
+
+详细配置请参考 `env.example` 文件和 [Docker使用指南](DOCKER_USAGE.md)。
 
 ## ⚙️ 环境配置
 
@@ -384,7 +444,7 @@ tail -f data/logs/daily_digest.log
 sudo journalctl -u daily-digest -f
 
 # Docker 日志
-docker-compose logs -f daily-digest
+docker compose logs -f daily-digest
 ```
 
 ## 📊 监控和日志

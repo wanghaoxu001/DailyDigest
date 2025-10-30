@@ -3,15 +3,16 @@
 .gitignore
 .gitattributes
 
-# 文档
-README.md
-LICENSE
-*.md
-
-# 开发环境文件
-.env.example
-.env.local
-.env.development
+# Python缓存和虚拟环境
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
 
 # IDE和编辑器
 .vscode/
@@ -20,108 +21,71 @@ LICENSE
 *.swo
 *~
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-*.manifest
-*.spec
-
-# 测试
-.tox/
-.nox/
-.coverage
-.pytest_cache/
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-.python-version
-
-# pipenv
-Pipfile.lock
-
-# PEP 582
-__pypackages__/
-
-# Celery
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
 # 日志文件
-logs/
 *.log
+logs/
+*.log.*
 
-# 临时文件
-tmp/
-temp/
-*.tmp
-*.temp
+# 数据库文件（在容器中会重新创建或挂载）
+*.db
+*.sqlite
+*.sqlite3
 
-# 数据目录（如果不需要打包到镜像中）
-# data/
-# daily_digest.db
+# 临时文件和缓存
+.cache/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
 
-# Docker相关
-Dockerfile
-docker-compose*.yml
-.dockerignore
+# 文档和README（运行时不需要）
+*.md
+docs/
+README*
+LICENSE
 
-# 脚本（生产环境不需要）
+# 构建产物和输出
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# 环境配置（通过挂载提供）
+.env
+.env.*
+envtemplate.txt
+
+# Node.js相关（如果有）
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 开发用的测试文件
+test_*.py
+*_test.py
+debug_*.py
+simple_test.py
+final_test.py
+
+# 大型输出文件
+*.pdf
+data/outputs/
+data/processed_articles/
+data/wechat_articles/
+
+# 脚本工具（开发时用）
 scripts/
 
-# 开发文档
-DEPLOYMENT_WORKFLOW.md 
+# Typora相关
+typora_*/
+*.html
+
+# Docker相关
+docker-compose*.yml
+Dockerfile*

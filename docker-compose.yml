@@ -1,38 +1,85 @@
-version: '3.8'
-
 services:
   daily-digest:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # 通过环境变量控制构建类型
+        BUILD_ENV: ${BUILD_ENV:-production}
     ports:
-      - "18899:18899"
+      - "${PORT:-18899}:18899"
     volumes:
+      # 数据目录挂载（始终需要）
       - ./data:/app/data
+      # 数据库文件挂载
       - ./daily_digest.db:/app/daily_digest.db
-      - ./.env:/app/.env
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
+      # 环境配置文件挂载
+      - ./.env:/app/.env:ro
     environment:
       - PYTHONPATH=/app
+      - FLASK_ENV=${FLASK_ENV:-production}
       - TZ=Asia/Shanghai
-    restart: unless-stopped
+      - BUILD_ENV=${BUILD_ENV:-production}
+    restart: ${RESTART_POLICY:-unless-stopped}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:18899/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    
-  # 可选：添加 Redis 用于缓存
+      interval: 60s          # 增加检查间隔，减少频率
+      timeout: 20s           # 增加超时时间
+      retries: 5             # 增加重试次数
+      start_period: 60s      # 增加启动期时间
+
+  # 开发环境服务 - 使用代码挂载
+  daily-digest-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_ENV: development
+    ports:
+      - "${DEV_PORT:-18899}:18899"
+    volumes:
+      # 开发环境：挂载整个代码目录
+      - .:/app
+      # 排除不需要挂载的目录
+      - /app/__pycache__
+      - /app/.git
+      - /app/node_modules
+      - /app/venv
+      - /app/.pytest_cache
+      - /app/.coverage
+      # 数据目录挂载
+      - ./data:/app/data
+      - ./daily_digest.db:/app/daily_digest.db
+      - ./.env:/app/.env:ro
+    environment:
+      - PYTHONPATH=/app
+      - FLASK_ENV=development
+      - TZ=Asia/Shanghai
+      - BUILD_ENV=development
+    # 开发环境不需要自动重启
+    restart: "no"
+    # 开发环境可以禁用健康检查加快启动
+    # healthcheck:
+    #   disable: true
+    profiles:
+      - dev
+      - development
+
+  # Redis 服务（可选）
   redis:
     image: redis:7-alpine
     volumes:
       - redis_data:/data
     restart: unless-stopped
     command: redis-server --appendonly yes
+    profiles:
+      - redis
+      - full
+      - dev
 
 volumes:
   redis_data: 
 
 networks:
-  nginx-proxy-manager_npm_network:
-    external: true 
+  default:
+    driver: bridge
