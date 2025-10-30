@@ -1,6 +1,17 @@
 /* 全局样式 */
+:root {
+    --font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "微软雅黑", sans-serif;
+}
+
 body {
-    font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+    font-family: var(--font-family-base);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* 优化文本渲染 */
+* {
+    text-rendering: optimizeLegibility;
 }
 
 /* 页脚样式 */
@@ -38,9 +49,58 @@ body {
 /* 加载动画容器 */
 .loading-container {
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     min-height: 200px;
+}
+
+/* 骨架屏动画 */
+@keyframes skeleton-loading {
+    0% {
+        background-position: -200px 0;
+    }
+    100% {
+        background-position: calc(200px + 100%) 0;
+    }
+}
+
+.skeleton {
+    display: inline-block;
+    height: 1em;
+    position: relative;
+    overflow: hidden;
+    background-color: #e0e0e0;
+    border-radius: 4px;
+}
+
+.skeleton::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+    animation: skeleton-loading 1.5s infinite;
+}
+
+.skeleton-text {
+    width: 100%;
+    margin: 0.5rem 0;
+}
+
+.skeleton-title {
+    width: 60%;
+    height: 1.5rem;
+    margin: 1rem 0;
+}
+
+.skeleton-card {
+    padding: 1.5rem;
+    background: white;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
 }
 
 /* 表单组样式 */
@@ -54,9 +114,50 @@ body {
     gap: 0.5rem;
 }
 
+/* 改进的焦点样式 - 提升键盘导航体验 */
+*:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+button:focus-visible,
+a:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+/* 防止按钮重复点击 */
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* 优化按钮交互 */
+.btn {
+    transition: all 0.2s ease-in-out;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn:active {
+    transform: scale(0.98);
+}
+
 /* 响应式调整 */
 @media (max-width: 768px) {
     .btn-group-custom {
         flex-direction: column;
+    }
+    
+    /* 改善移动端按钮体验 */
+    .btn {
+        min-height: 44px;
+        padding: 0.75rem 1.25rem;
+    }
+    
+    .btn-sm {
+        min-height: 38px;
+        padding: 0.5rem 1rem;
     }
 } 

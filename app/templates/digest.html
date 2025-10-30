@@ -198,12 +198,16 @@
         background: transparent;
         width: 100%;
         resize: vertical;
-        min-height: 60px;
+        min-height: 120px;
         padding: 8px;
         border-radius: 4px;
         font-size: 14px;
         line-height: 1.5;
         transition: background-color 0.2s;
+            /* 移动端文本选择与触摸优化 */
+            -webkit-user-select: text;
+            user-select: text;
+            touch-action: manipulation;
     }
 
     .news-summary-input:focus {
@@ -293,6 +297,15 @@
     
     /* 移动设备响应式设计 */
     @media (max-width: 768px) {
+        .news-summary-input {
+            font-size: 16px !important;  /* 防止 iOS 自动缩放 */
+            line-height: 1.6 !important;
+            -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        .news-title-input {
+            font-size: 16px !important;  /* 同样处理标题输入框 */
+        }
         /* 在移动设备上显示切换按钮 */
         .mobile-toggle-buttons {
             display: flex;
@@ -355,18 +368,27 @@
         .modal-dialog.modal-xl {
             margin: 0;
             max-width: 100%;
-            height: 100vh;
+            height: 100dvh;
         }
         
         .modal-content {
-            height: 100%;
+            height: 100dvh;
             border-radius: 0;
+            display: flex;
+            flex-direction: column;
         }
         
         .modal-body {
-            flex: 1;
+            flex: 1 1 auto;
             overflow-y: auto;
             padding: 15px;
+            /* 移除 overscroll-behavior 以避免与 fixed footer 冲突 */
+            -webkit-overflow-scrolling: touch;
+            /* 为底部固定按钮预留更多空间 */
+            padding-bottom: calc(100px + env(safe-area-inset-bottom));
+            /* 防止触摸穿透与分层 */
+            position: relative;
+            z-index: 1;
         }
         
         /* 优化表单标签显示 */
@@ -438,7 +460,19 @@
         }
         
         .modal-footer {
+            position: fixed;  /* 从 sticky 改为 fixed */
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #fff;
+            border-top: 1px solid #dee2e6;
+            z-index: 1050;  /* 提高层级,确保在模态框之上 */
             padding: 12px 16px;
+            /* 适配 iOS 安全区 */
+            padding-bottom: calc(12px + env(safe-area-inset-bottom));
+            /* 添加触摸优化 */
+            touch-action: manipulation;
+            pointer-events: auto;
         }
         
         /* 改善按钮组布局 */
@@ -450,6 +484,16 @@
         .modal-footer .btn {
             flex: 1;
             min-width: 80px;
+            min-height: 44px;  /* iOS 推荐的最小触摸目标 */
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 防止外层页面与模态产生滚动冲突 */
+        .modal {
+            overscroll-behavior: contain;
         }
     }
     /* GitHub样式预览 */
@@ -700,6 +744,30 @@
         </div>
     </div>
 </div>
+
+<!-- 新闻详情模态框 -->
+<div class="modal fade" id="newsDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">新闻详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="newsDetailContent">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %} {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/simplemde@1.11.2/dist/simplemde.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -708,6 +776,7 @@
     let currentDigestId = null;
     let currentEditMode = 'markdown'; // 'markdown' 或 'visual'
     let visualEditorData = null; // 存储可视化编辑器的数据
+    let currentDigestNewsIds = []; // 当前快报关联的数据库新闻ID列表
 
     // 新闻分类映射
     const NEWS_CATEGORIES = {
@@ -739,8 +808,17 @@
     };
 
     document.addEventListener('DOMContentLoaded', function() {
-        // 加载最新快报
-        loadLatestDigest();
+        // 检查URL参数，看是否需要直接查看特定快报
+        const urlParams = new URLSearchParams(window.location.search);
+        const viewDigestId = urlParams.get('view');
+
+        if (viewDigestId) {
+            // 如果有view参数，直接查看指定快报
+            viewDigest(parseInt(viewDigestId));
+        } else {
+            // 否则加载最新快报
+            loadLatestDigest();
+        }
 
         // 加载历史快报
         document.getElementById('history-tab').addEventListener('click', function() {
@@ -749,6 +827,23 @@
 
         // 保存快报按钮事件
         document.getElementById('btnSaveDigest').addEventListener('click', saveDigest);
+
+        // 视口变化监听与触摸优化（移动端稳定性增强）
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', () => {
+                const footer = document.querySelector('#editDigestModal .modal-footer');
+                if (footer) {
+                    footer.style.bottom = '0px';
+                }
+            });
+        }
+
+        // 防止点击穿透，确保底部按钮触摸事件被捕获
+        document.querySelectorAll('.modal-footer').forEach(footer => {
+            footer.addEventListener('touchstart', (e) => {
+                e.stopPropagation();
+            }, { passive: false });
+        });
 
         // 编辑快报按钮事件
         document.getElementById('btnEditDigest').addEventListener('click', function() {
@@ -765,6 +860,19 @@
 
         // 移动设备切换按钮事件
         initMobileToggleButtons();
+
+        // 添加重复检测标记的点击事件委托
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.classList.contains('duplicate-clickable')) {
+                try {
+                    const detectionData = JSON.parse(e.target.getAttribute('data-detection'));
+                    showDuplicateDetails(detectionData);
+                } catch (error) {
+                    console.error('解析重复检测数据失败:', error);
+                    alert('显示重复检测详情失败');
+                }
+            }
+        });
     });
 
     // 初始化编辑模式切换
@@ -958,6 +1066,10 @@
 
     // 加载最新快报
     function loadLatestDigest() {
+        // 停止任何现有的状态更新
+        stopDuplicateDetectionUpdates();
+
+        // 同时获取最新快报和详细信息
         axios.get('/api/digest/latest')
             .then(response => {
                 const digest = response.data;
@@ -973,7 +1085,7 @@
                     return;
                 }
 
-                // 渲染快报预览
+                // 显示基本框架
                 container.innerHTML = `
                     <div class="card">
                         <div class="card-header d-flex justify-content-between align-items-center">
@@ -981,8 +1093,12 @@
                             <span class="badge bg-primary">${formatDate(digest.date)}</span>
                         </div>
                         <div class="card-body">
-                            <div class="digest-preview">
-                                ${marked.parse(digest.content || '')}
+                            <div class="digest-preview" id="latestDigestPreview">
+                                <div class="text-center py-4">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">正在加载内容...</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div class="card-footer">
@@ -993,10 +1109,43 @@
                                 <button class="btn btn-success" onclick="downloadOrGeneratePdf(${digest.id})">
                                     <i class="bi bi-file-pdf"></i> 下载PDF
                                 </button>
+                                <button class="btn btn-outline-secondary" onclick="viewDigest(${digest.id})">
+                                    <i class="bi bi-eye"></i> 查看详情
+                                </button>
                             </div>
                         </div>
                     </div>
                 `;
+
+                // 异步获取详细信息并增强内容
+                axios.get(`/api/digest/${digest.id}`)
+                    .then(detailResponse => {
+                        const detailDigest = detailResponse.data;
+                        const newsIds = detailDigest.news_ids || [];
+                        
+                        // 增强内容并显示
+                enhanceDigestContent(detailDigest.content || '', newsIds, detailDigest.id)
+                    .then(enhancedContent => {
+                        const previewElement = document.getElementById('latestDigestPreview');
+                        previewElement.innerHTML = enhancedContent;
+                        previewElement.setAttribute('data-digest-id', detailDigest.id);
+
+                        // 启动重复检测状态更新（如果页面上有重复检测标记）
+                        if (enhancedContent.includes('duplicate-detection-badge')) {
+                            console.log(`为最新快报 ${detailDigest.id} 启动重复检测状态更新`);
+                            startDuplicateDetectionUpdates(detailDigest.id, previewElement);
+                        }
+                    })
+                            .catch(error => {
+                                console.error('Error enhancing latest digest content:', error);
+                                document.getElementById('latestDigestPreview').innerHTML = marked.parse(detailDigest.content || '');
+                            });
+                    })
+                    .catch(error => {
+                        console.error('Error loading latest digest details:', error);
+                        // 如果获取详情失败，显示基本内容
+                        document.getElementById('latestDigestPreview').innerHTML = marked.parse(digest.content || '');
+                    });
             })
             .catch(error => {
                 console.error('Error loading latest digest:', error);
@@ -1011,7 +1160,7 @@
 
     // 加载历史快报
     function loadHistoryDigests() {
-        axios.get('/api/digest')
+        axios.get('/api/digest/')
             .then(response => {
                 const digests = response.data;
                 const container = document.getElementById('historyDigestContainer');
@@ -1084,11 +1233,26 @@
             .then(response => {
                 const digest = response.data;
 
+                // 保存关联的新闻ID列表
+                currentDigestNewsIds = digest.news_ids || [];
+
                 // 设置标题
                 document.getElementById('viewDigestTitle').textContent = digest.title;
 
-                // 渲染内容
-                document.getElementById('viewDigestContent').innerHTML = marked.parse(digest.content || '');
+                // 显示加载状态
+                document.getElementById('viewDigestContent').innerHTML = `
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">正在加载内容...</span>
+                        </div>
+                    </div>
+                `;
+
+                // 异步渲染增强的内容
+                enhanceDigestContent(digest.content || '', currentDigestNewsIds, digestId)
+                    .then(enhancedContent => {
+                        document.getElementById('viewDigestContent').innerHTML = enhancedContent;
+                    });
 
                 // 设置PDF下载事件
                 const pdfBtn = document.getElementById('btnDownloadPdf');
@@ -1100,6 +1264,22 @@
                 // 显示模态框
                 const modal = new bootstrap.Modal(document.getElementById('viewDigestModal'));
                 modal.show();
+
+                // 启动重复检测状态更新
+                startDuplicateDetectionUpdates(digestId, document.getElementById('viewDigestContent'));
+
+                // 监听模态框关闭事件，停止状态更新
+                const modalElement = document.getElementById('viewDigestModal');
+                modalElement.addEventListener('hidden.bs.modal', () => {
+                    const previewElement = document.getElementById('latestDigestPreview');
+                    const previewDigestId = previewElement ? parseInt(previewElement.getAttribute('data-digest-id') || '0', 10) : null;
+
+                    stopDuplicateDetectionUpdates();
+
+                    if (previewElement && previewDigestId === digestId) {
+                        startDuplicateDetectionUpdates(digestId, previewElement);
+                    }
+                }, { once: true });
             })
             .catch(error => {
                 console.error('Error loading digest details:', error);
@@ -1200,6 +1380,9 @@
                         btnShowPreview.classList.remove('active');
                         btnShowPreview.classList.remove('btn-secondary');
                         btnShowPreview.classList.add('btn-outline-secondary');
+
+                        // 移动端：模态展示后，统一自适应所有摘要高度
+                        bindAutoResizeForAllSummariesMobile();
                     }
                     
                     if (simplemde && simplemde.codemirror) {
@@ -1207,6 +1390,10 @@
                         setTimeout(() => {
                             simplemde.codemirror.refresh();
                             simplemde.codemirror.focus();
+                            // 再次兜底调整一次摘要高度
+                            if (window.innerWidth <= 768) {
+                                bindAutoResizeForAllSummariesMobile();
+                            }
                         }, 100);
                     }
                 }, {
@@ -1428,6 +1615,11 @@
 
         // 绑定可视化编辑器事件
         bindVisualEditorEvents();
+
+        // 渲染后为移动端绑定摘要自动高度
+        if (window.innerWidth <= 768) {
+            setTimeout(() => { bindAutoResizeForAllSummariesMobile(); }, 0);
+        }
     }
 
     // 创建分类区域
@@ -1462,6 +1654,17 @@
             if (emptyMsg) emptyMsg.remove();
         }
     }
+
+    // 输入自适应高度的防抖
+    let resizeTimeout;
+    const debouncedResize = (textarea) => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            if (typeof autoResizeTextareaMobile === 'function') {
+                autoResizeTextareaMobile(textarea);
+            }
+        }, 50);
+    };
 
     // 创建新闻项
     function createNewsItem(container, news, categoryKey, index) {
@@ -1512,6 +1715,23 @@
             }
         });
         
+        // 移动端：初始化摘要高度并绑定输入自适应（加入防抖与焦点滚动锁定）
+        const summaryEl = newsDiv.querySelector('.news-summary-input');
+        if (summaryEl && window.innerWidth <= 768) {
+            if (typeof autoResizeTextareaMobile === 'function') {
+                autoResizeTextareaMobile(summaryEl);
+            }
+            summaryEl.addEventListener('input', function() {
+                debouncedResize(summaryEl);
+            });
+            summaryEl.addEventListener('focus', function(e) {
+                const prevScrollTop = e.target.scrollTop;
+                setTimeout(() => {
+                    e.target.scrollTop = prevScrollTop;
+                }, 0);
+            });
+        }
+
         return newsDiv;
     }
 
@@ -1950,5 +2170,1145 @@
 
         return badges.join(' ');
     }
+
+    // 查看新闻详情
+    function viewNewsDetail(newsId) {
+        axios.get(`/api/news/${newsId}`)
+            .then(response => {
+                const news = response.data;
+                
+                const detailContent = document.getElementById('newsDetailContent');
+                
+                let entitiesHtml = '';
+                if (news.entities) {
+                    entitiesHtml = '<div class="mt-3"><h6><strong>提取的实体</strong></h6><ul>';
+
+                    // 检查实体是否为数组格式
+                    if (Array.isArray(news.entities)) {
+                        news.entities.forEach(entity => {
+                            if (typeof entity === 'object' && entity !== null) {
+                                // 处理不同格式的实体对象
+                                if (entity.type && entity.value) {
+                                    // 标准格式 {type: "...", value: "..."}
+                                    entitiesHtml += `<li><strong>${entity.type}:</strong> ${entity.value}</li>`;
+                                } else {
+                                    // 处理其他格式 {key: value}
+                                    const entityType = Object.keys(entity)[0] || '未知类型';
+                                    const entityValue = entity[entityType] || '未知';
+                                    entitiesHtml += `<li><strong>${entityType}:</strong> ${entityValue}</li>`;
+                                }
+                            } else {
+                                entitiesHtml += `<li>${entity}</li>`;
+                            }
+                        });
+                    }
+                    // 检查实体是否为对象格式
+                    else if (typeof news.entities === 'object') {
+                        // 检查是否有type和value字段的特殊对象
+                        if (news.entities.type && news.entities.value) {
+                            entitiesHtml += `<li><strong>${news.entities.type}:</strong> ${news.entities.value}</li>`;
+                        } else {
+                            // 常规对象格式 {key1: value1, key2: value2}
+                            for (const [key, value] of Object.entries(news.entities)) {
+                                if (key !== 'error') {
+                                    entitiesHtml += `<li><strong>${key}:</strong> ${value}</li>`;
+                                }
+                            }
+                        }
+                    }
+
+                    entitiesHtml += '</ul></div>';
+                }
+
+                detailContent.innerHTML = `
+                    <h4>${news.title}</h4>
+                    <div class="text-muted mb-2">来源: ${news.source_name || '未知来源'} | 时间: ${formatDate(news.created_at)}</div>
+                    
+                    <div class="card mb-3">
+                        <div class="card-header bg-light">原始内容摘要</div>
+                        <div class="card-body">
+                            <p>${news.summary}</p>
+                            <a href="${news.original_url}" target="_blank" class="btn btn-sm btn-outline-primary">查看原文</a>
+                        </div>
+                    </div>
+                    
+                    <div class="card mb-3">
+                        <div class="card-header bg-light">处理结果</div>
+                        <div class="card-body">
+                            ${news.is_processed ? `
+                                <div class="mb-2"><strong>一句话标题:</strong> ${news.generated_title || '暂无'}</div>
+                                <div class="mb-2"><strong>摘要:</strong> ${news.generated_summary || '暂无'}</div>
+                                <div class="mb-2"><strong>分类:</strong> ${getCategoryLabel(news.category)}</div>
+                                ${entitiesHtml}
+                                
+                                ${news.article_summary ? `
+                                <div class="card mb-3 mt-3">
+                                    <div class="card-header bg-light">详细文章总结</div>
+                                    <div class="card-body">
+                                        <div class="article-summary">${news.article_summary}</div>
+                                    </div>
+                                </div>
+                                ` : '<div class="alert alert-info mt-2">该新闻还没有生成详细文章总结</div>'}
+                                
+                                ${news.tokens_usage ? `
+                                <div class="card mt-3">
+                                    <div class="card-header bg-light">Tokens使用统计</div>
+                                    <div class="card-body">
+                                        <table class="table table-sm table-striped">
+                                            <thead>
+                                                <tr>
+                                                    <th>处理类型</th>
+                                                    <th>Prompt Tokens</th>
+                                                    <th>Completion Tokens</th>
+                                                    <th>总计</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                ${formatTokensUsage(news.tokens_usage)}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                ` : ''}
+                            ` : '<div class="alert alert-warning">该新闻尚未处理</div>'}
+                        </div>
+                    </div>
+                `;
+                
+                // 显示模态框
+                const modal = new bootstrap.Modal(document.getElementById('newsDetailModal'));
+                modal.show();
+            })
+            .catch(error => {
+                console.error('Error loading news details:', error);
+                alert('加载新闻详情失败');
+            });
+    }
+
+    // 获取分类标签
+    function getCategoryLabel(category) {
+        const categoryMap = {
+            '金融业网络安全事件': '金融业网络安全事件',
+            '重大网络安全事件': '重大网络安全事件', 
+            '重大数据泄露事件': '重大数据泄露事件',
+            '重大漏洞风险提示': '重大漏洞风险提示',
+            '其他': '其他'
+        };
+        return categoryMap[category] || category || '未分类';
+    }
+
+    // 格式化tokens使用信息
+    function formatTokensUsage(tokensUsage) {
+        if (!tokensUsage) return '';
+        
+        let html = '';
+        let totalPromptTokens = 0;
+        let totalCompletionTokens = 0;
+        let totalTokens = 0;
+        
+        // 处理类型映射表
+        const typeLabels = {
+            'title_translation': '标题翻译',
+            'summary_translation': '摘要翻译', 
+            'content_translation': '内容翻译',
+            'article_summary': '文章总结',
+            'category': '分类',
+            'entities': '实体提取'
+        };
+        
+        for (const [type, usage] of Object.entries(tokensUsage)) {
+            if (!usage) continue;
+            
+            let promptTokens = 0;
+            let completionTokens = 0;
+            let tokensSum = 0;
+            
+            if (typeof usage === 'object') {
+                promptTokens = usage.prompt_tokens || 0;
+                completionTokens = usage.completion_tokens || 0;
+                tokensSum = usage.total_tokens || (promptTokens + completionTokens);
+                
+                totalPromptTokens += promptTokens;
+                totalCompletionTokens += completionTokens;
+                totalTokens += tokensSum;
+                
+                const label = typeLabels[type] || type;
+                html += `
+                    <tr>
+                        <td>${label}</td>
+                        <td>${promptTokens}</td>
+                        <td>${completionTokens}</td>
+                        <td>${tokensSum}</td>
+                    </tr>
+                `;
+            }
+        }
+        
+        // 添加总计行
+        html += `
+            <tr class="table-primary">
+                <td><strong>总计</strong></td>
+                <td><strong>${totalPromptTokens}</strong></td>
+                <td><strong>${totalCompletionTokens}</strong></td>
+                <td><strong>${totalTokens}</strong></td>
+            </tr>
+        `;
+        
+        return html;
+    }
+
+    // 增强快报内容，为数据库新闻添加查看详情按钮和重复检测标记
+    function enhanceDigestContent(markdownContent, newsIds, digestId = null) {
+        if (!markdownContent || newsIds.length === 0) {
+            return Promise.resolve(marked.parse(markdownContent || ''));
+        }
+
+        // 首先获取所有关联新闻的详细信息
+        const newsPromises = newsIds.map(id =>
+            axios.get(`/api/news/${id}`).then(response => response.data).catch(error => null)
+        );
+
+        // 如果有digestId，也获取重复检测状态
+        const duplicateStatusPromise = digestId ?
+            axios.get(`/api/digest/${digestId}/duplicate-detection-status`)
+                .then(response => {
+                    // 检查整体检测状态，如果正在检测则为新闻创建临时标记
+                    const detectionStatus = response.data.detection_status;
+                    const results = response.data.duplicate_detection_results;
+
+                    // 如果检测正在进行中，为没有结果的新闻添加"正在检测"状态
+                    if (detectionStatus === 'running') {
+                        newsIds.forEach(newsId => {
+                            if (!results[newsId]) {
+                                results[newsId] = { status: 'checking' };
+                            }
+                        });
+                    } else if (detectionStatus === 'pending') {
+                        // 如果检测还未开始，为新闻添加"等待检测"状态
+                        newsIds.forEach(newsId => {
+                            if (!results[newsId]) {
+                                results[newsId] = { status: 'pending' };
+                            }
+                        });
+                    }
+
+                    return results;
+                })
+                .catch(error => {
+                    console.warn('获取重复检测状态失败:', error);
+                    return {};
+                }) : Promise.resolve({});
+
+        return Promise.all([Promise.all(newsPromises), duplicateStatusPromise])
+            .then(([newsDetails, duplicateStatus]) => {
+                // 过滤掉获取失败的新闻
+                const validNewsDetails = newsDetails.filter(news => news !== null);
+
+                // 将Markdown转换为HTML
+                let htmlContent = marked.parse(markdownContent);
+
+                // 使用DOM解析器来更精确地匹配和修改内容
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = htmlContent;
+
+                // 查找所有的strong标签（新闻标题）
+                const strongTags = tempDiv.querySelectorAll('strong');
+
+                strongTags.forEach(strongTag => {
+                    const titleText = strongTag.textContent.trim();
+
+                    // 查找匹配的新闻
+                    const matchedNews = validNewsDetails.find(news => {
+                        const possibleTitles = [news.title, news.generated_title].filter(Boolean);
+                        return possibleTitles.some(title => {
+                            // 进行部分匹配，允许标题略有不同
+                            return titleText.includes(title) || title.includes(titleText) ||
+                                   titleText.toLowerCase() === title.toLowerCase();
+                        });
+                    });
+
+                    if (matchedNews) {
+                        // 创建按钮容器
+                        const buttonContainer = document.createElement('span');
+                        buttonContainer.className = 'ms-2 d-inline-flex gap-1 align-items-center';
+
+                        // 创建查看详情按钮
+                        const detailBtn = document.createElement('button');
+                        detailBtn.className = 'btn btn-sm btn-outline-info';
+                        detailBtn.setAttribute('onclick', `viewNewsDetail(${matchedNews.id})`);
+                        detailBtn.setAttribute('title', '查看详情');
+                        detailBtn.innerHTML = '<i class="bi bi-info-circle"></i>';
+                        buttonContainer.appendChild(detailBtn);
+
+                        // 添加重复检测标记
+                        const detection = duplicateStatus[matchedNews.id];
+                        if (detection) {
+                            const duplicateBadge = createDuplicateBadge(detection, matchedNews.id);
+                            buttonContainer.appendChild(duplicateBadge);
+                        }
+
+                        // 在strong标签后添加按钮容器
+                        strongTag.parentNode.insertBefore(buttonContainer, strongTag.nextSibling);
+
+                        // 标记该新闻已处理，避免重复添加按钮
+                        strongTag.setAttribute('data-news-enhanced', 'true');
+                    }
+                });
+
+                return tempDiv.innerHTML;
+            }).catch(error => {
+                console.error('Error enhancing digest content:', error);
+                // 如果增强失败，返回原始HTML
+                return marked.parse(markdownContent);
+            });
+    }
+
+    // 创建重复检测标记
+    function createDuplicateBadge(detection, newsId) {
+        const badge = document.createElement('span');
+        badge.className = 'duplicate-detection-badge';
+        badge.setAttribute('data-news-id', newsId);
+
+        switch (detection.status) {
+            case 'pending':
+                badge.className += ' badge bg-secondary text-white';
+                badge.innerHTML = '<i class="bi bi-hourglass"></i> 等待检测';
+                badge.title = '等待开始重复检测';
+                break;
+            case 'checking':
+                badge.className += ' badge bg-warning text-dark';
+                badge.innerHTML = '<i class="bi bi-clock"></i> 正在检测';
+                badge.title = '正在使用AI检测是否与历史新闻重复';
+                break;
+
+            case 'duplicate':
+                badge.className += ' badge bg-danger';
+                badge.innerHTML = '<i class="bi bi-exclamation-triangle"></i> 疑似重复';
+                badge.title = `相似度: ${(detection.similarity_score * 100).toFixed(1)}%`;
+                badge.style.cursor = 'pointer';
+                badge.setAttribute('data-detection', JSON.stringify(detection));
+                badge.classList.add('duplicate-clickable');
+                break;
+
+            case 'no_duplicate':
+                badge.className += ' badge bg-success';
+                badge.innerHTML = '<i class="bi bi-check-circle"></i> 无重复';
+                badge.title = '已确认与历史新闻无重复';
+                break;
+
+            case 'error':
+                badge.className += ' badge bg-secondary';
+                badge.innerHTML = '<i class="bi bi-x-circle"></i> 检测出错';
+                badge.title = '重复检测过程出现错误';
+                break;
+
+            default:
+                badge.className += ' badge bg-light text-dark';
+                badge.innerHTML = '<i class="bi bi-question-circle"></i> 未知状态';
+        }
+
+        return badge;
+    }
+
+    // 显示重复检测详情
+    function showDuplicateDetails(detection) {
+        // 如果有重复的新闻ID，先获取该新闻的详细信息
+        if (detection.duplicate_with_news_id) {
+            // 显示加载状态的模态框
+            showDuplicateDetailsModal(detection, null, true);
+
+            // 异步获取重复新闻的详细信息
+            axios.get(`/api/news/${detection.duplicate_with_news_id}`)
+                .then(response => {
+                    const duplicateNews = response.data;
+                    showDuplicateDetailsModal(detection, duplicateNews, false);
+                })
+                .catch(error => {
+                    console.error('获取重复新闻详情失败:', error);
+                    showDuplicateDetailsModal(detection, null, false);
+                });
+        } else {
+            showDuplicateDetailsModal(detection, null, false);
+        }
+    }
+
+    // 实际显示重复检测详情模态框
+    function showDuplicateDetailsModal(detection, duplicateNews, isLoading) {
+        // 移除现有的模态框
+        const existingModal = document.getElementById('duplicateDetailsModal');
+        if (existingModal) {
+            document.body.removeChild(existingModal);
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'duplicateDetailsModal';
+        modal.className = 'modal fade';
+
+        // 构建重复新闻所属快报信息
+        let digestInfo = '';
+        if (duplicateNews && duplicateNews.digests && duplicateNews.digests.length > 0) {
+            // 找到最新的快报（按创建时间排序）
+            const latestDigest = duplicateNews.digests.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+            const digestDate = new Date(latestDigest.date).toLocaleDateString('zh-CN');
+            digestInfo = `
+                <div class="mb-3">
+                    <h6><i class="bi bi-calendar-event me-1"></i>所属快报</h6>
+                    <div class="border rounded p-3 bg-light">
+                        <p class="mb-2"><strong>快报标题:</strong> ${latestDigest.title}</p>
+                        <p class="mb-2"><strong>快报日期:</strong> ${digestDate}</p>
+                        <div class="d-flex gap-2">
+                            <a href="/digest?view=${latestDigest.id}" target="_blank" class="btn btn-sm btn-success">
+                                <i class="bi bi-box-arrow-up-right me-1"></i>在新标签页查看该快报
+                            </a>
+                            <button class="btn btn-sm btn-outline-primary" onclick="viewDigest(${latestDigest.id})" data-bs-dismiss="modal">
+                                <i class="bi bi-eye me-1"></i>在当前页面查看
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        modal.innerHTML = `
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">重复检测详情</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-warning d-flex align-items-center mb-3">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <div>
+                                <strong>检测到疑似重复新闻</strong><br>
+                                <small>相似度评分: <strong>${(detection.similarity_score * 100).toFixed(1)}%</strong></small>
+                            </div>
+                        </div>
+
+                        ${detection.duplicate_with_news_id ? `
+                            <div class="mb-3">
+                                <h6><i class="bi bi-newspaper me-1"></i>重复的历史新闻</h6>
+                                <div class="border rounded p-3 bg-light">
+                                    ${isLoading ? `
+                                        <div class="text-center py-2">
+                                            <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                                                <span class="visually-hidden">加载中...</span>
+                                            </div>
+                                            正在获取新闻详情...
+                                        </div>
+                                    ` : `
+                                        <p class="mb-2"><strong>新闻ID:</strong> ${detection.duplicate_with_news_id}</p>
+                                        ${duplicateNews ? `
+                                            <p class="mb-2"><strong>新闻标题:</strong> ${duplicateNews.title || duplicateNews.generated_title}</p>
+                                            <p class="mb-2"><strong>发布时间:</strong> ${duplicateNews.publish_date ? new Date(duplicateNews.publish_date).toLocaleString('zh-CN') : '未知'}</p>
+                                        ` : ''}
+                                        <div class="d-flex gap-2">
+                                            <button class="btn btn-sm btn-primary"
+                                                    onclick="viewNewsDetail(${detection.duplicate_with_news_id})"
+                                                    data-bs-dismiss="modal">
+                                                <i class="bi bi-eye me-1"></i>查看完整新闻内容
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary"
+                                                    onclick="copyNewsId(${detection.duplicate_with_news_id})">
+                                                <i class="bi bi-copy me-1"></i>复制新闻ID
+                                            </button>
+                                        </div>
+                                    `}
+                                </div>
+                            </div>
+
+                            ${digestInfo}
+                        ` : ''}
+
+                        ${detection.llm_reasoning ? `
+                            <div class="mb-3">
+                                <h6><i class="bi bi-cpu me-1"></i>AI分析判断过程</h6>
+                                <div class="border rounded bg-light" style="max-height: 300px; overflow-y: auto;">
+                                    <pre class="p-3 m-0" style="white-space: pre-wrap; font-size: 12px; line-height: 1.4;">${detection.llm_reasoning}</pre>
+                                </div>
+                            </div>
+                        ` : ''}
+
+                        <div class="text-muted small">
+                            <i class="bi bi-clock me-1"></i>检测时间: ${new Date(detection.checked_at).toLocaleString()}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+
+        // 在模态框关闭后清理DOM
+        modal.addEventListener('hidden.bs.modal', () => {
+            if (document.body.contains(modal)) {
+                document.body.removeChild(modal);
+            }
+        });
+    }
+
+    // 异步状态更新机制
+    let duplicateDetectionInterval = null;
+    let currentViewDigestId = null;
+    let countdownInterval = null;
+    let detectionEstimation = null;
+    let currentRefreshInterval = 3000; // 当前刷新间隔
+    let lastDetectionStatus = null; // 上次检测状态
+    let currentDetectionContainer = null; // 当前倒计时显示容器
+
+    function getDetectionContainer() {
+        if (currentDetectionContainer) {
+            return currentDetectionContainer;
+        }
+        return document.getElementById('viewDigestContent');
+    }
+
+    // 启动重复检测状态更新
+    function startDuplicateDetectionUpdates(digestId, containerElement = null) {
+        const digestChanged = currentViewDigestId !== null && currentViewDigestId !== digestId;
+
+        if (digestChanged) {
+            stopDuplicateDetectionUpdates();
+        }
+
+        if (containerElement) {
+            if (!digestChanged && currentDetectionContainer && currentDetectionContainer !== containerElement) {
+                removeEstimationDisplay(digestId, currentDetectionContainer);
+            }
+            currentDetectionContainer = containerElement;
+        } else if (!currentDetectionContainer) {
+            currentDetectionContainer = document.getElementById('viewDigestContent');
+        }
+
+        if (!currentDetectionContainer) {
+            console.warn('未找到重复检测显示容器');
+            return;
+        }
+
+        currentViewDigestId = digestId;
+
+        if (!duplicateDetectionInterval) {
+            // 启动自适应刷新（内部会检查状态并决定是否获取预估）
+            startAdaptiveRefresh(digestId);
+        } else {
+            // 如果已有估算信息，立即同步到新容器
+            if (detectionEstimation) {
+                showEstimationInfo(digestId, detectionEstimation);
+            } else {
+                showDetectionInProgress(digestId);
+            }
+        }
+
+        console.log(`已启动快报 ${digestId} 的重复检测状态更新`);
+    }
+
+    // 启动自适应刷新机制
+    function startAdaptiveRefresh(digestId) {
+        // 先检查检测状态，决定是否需要启动更新机制
+        axios.get(`/api/digest/${digestId}/duplicate-detection-status`)
+            .then(response => {
+                const detectionStatus = response.data.detection_status;
+                console.log(`快报 ${digestId} 检测状态: ${detectionStatus}`);
+
+                if (detectionStatus === 'completed') {
+                    console.log('检测已完成，不启动状态更新');
+                    removeEstimationDisplay(digestId);
+                    return;
+                }
+
+                // 检测进行中，启动更新机制
+                console.log('检测进行中，启动状态更新');
+
+                // 获取时间预估并启动倒计时
+                fetchDetectionEstimation(digestId);
+
+                // 初始检查
+                updateDuplicateDetectionStatus(digestId);
+
+                // 设置定时器
+                duplicateDetectionInterval = setInterval(() => {
+                    updateDuplicateDetectionStatus(digestId);
+                }, currentRefreshInterval);
+            })
+            .catch(error => {
+                console.warn('检查检测状态失败，尝试启动更新:', error);
+                // 如果检查失败，还是尝试启动更新
+                updateDuplicateDetectionStatus(digestId);
+                duplicateDetectionInterval = setInterval(() => {
+                    updateDuplicateDetectionStatus(digestId);
+                }, currentRefreshInterval);
+            });
+    }
+
+    // 调整刷新间隔
+    function adjustRefreshInterval(detectionStatus, hasActiveChecking) {
+        let newInterval;
+
+        if (detectionStatus === 'running' && hasActiveChecking) {
+            // 检测正在进行且有活跃检查：2秒一次
+            newInterval = 2000;
+        } else if (detectionStatus === 'running') {
+            // 检测进行中但没有活跃检查：3秒一次
+            newInterval = 3000;
+        } else if (detectionStatus === 'pending') {
+            // 等待开始检测：5秒一次
+            newInterval = 5000;
+        } else {
+            // 检测完成或其他状态：8秒一次
+            newInterval = 8000;
+        }
+
+        // 只有间隔发生变化时才重新设置定时器
+        if (newInterval !== currentRefreshInterval) {
+            console.log(`调整刷新间隔: ${currentRefreshInterval}ms -> ${newInterval}ms (状态: ${detectionStatus})`);
+            currentRefreshInterval = newInterval;
+
+            // 重新启动定时器
+            if (duplicateDetectionInterval && currentViewDigestId) {
+                clearInterval(duplicateDetectionInterval);
+                duplicateDetectionInterval = setInterval(() => {
+                    updateDuplicateDetectionStatus(currentViewDigestId);
+                }, currentRefreshInterval);
+            }
+        }
+    }
+
+    // 停止重复检测状态更新
+    function stopDuplicateDetectionUpdates() {
+        if (duplicateDetectionInterval) {
+            clearInterval(duplicateDetectionInterval);
+            duplicateDetectionInterval = null;
+            console.log('已停止重复检测状态更新');
+        }
+
+        if (currentViewDigestId && currentDetectionContainer) {
+            removeEstimationDisplay(currentViewDigestId, currentDetectionContainer);
+        }
+
+        currentViewDigestId = null;
+        currentDetectionContainer = null;
+        detectionEstimation = null;
+        currentRefreshInterval = 3000;
+        lastDetectionStatus = null;
+
+        // 停止倒计时
+        stopCountdown();
+    }
+
+    // 更新重复检测状态
+    function updateDuplicateDetectionStatus(digestId) {
+        if (!digestId || digestId !== currentViewDigestId) {
+            return;
+        }
+
+        // 首先获取状态信息（必需），然后尝试获取进度信息（可选）
+        axios.get(`/api/digest/${digestId}/duplicate-detection-status`)
+            .then(statusResponse => {
+                const results = statusResponse.data.duplicate_detection_results;
+                const detectionStatus = statusResponse.data.detection_status;
+                let hasUpdates = false;
+
+                // 尝试获取进度信息（可选）
+                axios.get(`/api/digest/${digestId}/duplicate-detection-progress`)
+                    .then(progressResponse => {
+                        const progress = progressResponse.data.progress;
+                        // 更新进度显示
+                        if (progress) {
+                            updateProgressDisplay(digestId, progress);
+                        }
+                    })
+                    .catch(progressError => {
+                        // 进度API失败不影响主要逻辑，只记录日志
+                        console.debug('获取进度信息失败（正常情况）:', progressError.message);
+                    });
+
+                // 检查是否有正在进行的检测
+                const hasActiveChecking = Object.values(results).some(result => result.status === 'checking');
+
+                // 调整刷新间隔
+                adjustRefreshInterval(detectionStatus, hasActiveChecking);
+
+                // 检查是否有状态变化
+                document.querySelectorAll('.duplicate-detection-badge').forEach(badge => {
+                    const newsId = parseInt(badge.getAttribute('data-news-id'));
+                    let detection = results[newsId];
+
+                    // 如果检测正在进行但没有具体结果，显示检测中状态
+                    if (!detection && detectionStatus === 'running') {
+                        detection = { status: 'checking' };
+                    } else if (!detection && detectionStatus === 'pending') {
+                        detection = { status: 'pending' };
+                    }
+
+                    if (detection) {
+                        const currentStatus = badge.textContent.trim();
+                        const newBadge = createDuplicateBadge(detection, newsId);
+
+                        // 比较状态是否发生变化
+                        if (newBadge.textContent.trim() !== currentStatus) {
+                            // 替换旧的标记
+                            badge.parentNode.replaceChild(newBadge, badge);
+                            hasUpdates = true;
+
+                            // 如果检测完成，显示通知并立即刷新一次
+                            if (detection.status !== 'checking' && detection.status !== 'pending') {
+                                showDetectionCompleteNotification(newsId, detection);
+
+                                // 检测完成后立即进行额外的刷新以确保状态同步
+                                setTimeout(() => {
+                                    console.log(`新闻 ${newsId} 检测完成，进行立即刷新`);
+                                    updateDuplicateDetectionStatus(digestId);
+                                }, 500);
+                            }
+                        }
+                    }
+                });
+
+                // 如果所有检测都完成了，可以停止更新
+                const allStatuses = Object.values(results);
+                const allCompleted = allStatuses.every(status => status.status !== 'checking');
+
+                if (allCompleted && allStatuses.length > 0) {
+                    console.log('所有重复检测已完成，停止状态更新');
+
+                    // 移除预估信息显示
+                    removeEstimationDisplay(digestId);
+
+                    // 停止更新和倒计时
+                    stopDuplicateDetectionUpdates();
+                }
+
+                if (hasUpdates) {
+                    console.log(`快报 ${digestId} 重复检测状态已更新`);
+                }
+            })
+            .catch(error => {
+                console.warn('获取重复检测状态失败:', error);
+                // 如果状态API失败，停止更新以避免持续错误
+                stopDuplicateDetectionUpdates();
+            });
+    }
+
+    // 显示检测完成通知
+    function showDetectionCompleteNotification(newsId, detection) {
+        const notificationContainer = document.getElementById('notification-container') ||
+            createNotificationContainer();
+
+        const notification = document.createElement('div');
+        notification.className = 'toast align-items-center border-0';
+        notification.setAttribute('role', 'alert');
+        notification.setAttribute('aria-live', 'assertive');
+        notification.setAttribute('aria-atomic', 'true');
+
+        let bgClass = 'bg-primary';
+        let iconClass = 'bi-info-circle';
+        let message = '';
+
+        switch (detection.status) {
+            case 'duplicate':
+                bgClass = 'bg-warning';
+                iconClass = 'bi-exclamation-triangle';
+                message = `新闻 ${newsId} 疑似重复 (相似度: ${(detection.similarity_score * 100).toFixed(1)}%)`;
+                break;
+            case 'no_duplicate':
+                bgClass = 'bg-success';
+                iconClass = 'bi-check-circle';
+                message = `新闻 ${newsId} 检测完成，无重复`;
+                break;
+            case 'error':
+                bgClass = 'bg-danger';
+                iconClass = 'bi-x-circle';
+                message = `新闻 ${newsId} 重复检测出错`;
+                break;
+        }
+
+        notification.classList.add(bgClass, 'text-white');
+        notification.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi ${iconClass} me-2"></i>
+                    ${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                        data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        `;
+
+        notificationContainer.appendChild(notification);
+
+        const bsToast = new bootstrap.Toast(notification, {
+            delay: 5000
+        });
+        bsToast.show();
+
+        // 清理DOM
+        notification.addEventListener('hidden.bs.toast', () => {
+            notificationContainer.removeChild(notification);
+        });
+    }
+
+    // 创建通知容器
+    function createNotificationContainer() {
+        const container = document.createElement('div');
+        container.id = 'notification-container';
+        container.className = 'toast-container position-fixed top-0 end-0 p-3';
+        container.style.zIndex = '9999';
+        document.body.appendChild(container);
+        return container;
+    }
+
+    // 复制新闻ID到剪贴板
+    function copyNewsId(newsId) {
+        navigator.clipboard.writeText(newsId.toString()).then(() => {
+            // 显示复制成功提示
+            const toast = document.createElement('div');
+            toast.className = 'toast align-items-center text-white bg-success border-0';
+            toast.setAttribute('role', 'alert');
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">
+                        <i class="bi bi-check-circle me-2"></i>新闻ID ${newsId} 已复制到剪贴板
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            `;
+
+            const container = document.getElementById('notification-container') || createNotificationContainer();
+            container.appendChild(toast);
+
+            const bsToast = new bootstrap.Toast(toast, { delay: 3000 });
+            bsToast.show();
+
+            // 清理DOM
+            toast.addEventListener('hidden.bs.toast', () => {
+                if (container.contains(toast)) {
+                    container.removeChild(toast);
+                }
+            });
+        }).catch(err => {
+            console.error('复制失败:', err);
+            alert(`新闻ID: ${newsId}`);
+        });
+    }
+
+    // 移动端：摘要文本域自动增高
+    function autoResizeTextareaMobile(textarea) {
+        try {
+            // 仅在移动端执行
+            if (window.innerWidth > 768) return;
+            textarea.style.height = 'auto';
+            textarea.style.overflow = 'hidden';
+            textarea.style.boxSizing = 'border-box';
+            // 基于内容的高度，设置上限防止极端内容导致过高
+            const minH = 120;
+            const maxH = 1600;
+            const next = Math.min(Math.max(textarea.scrollHeight, minH), maxH);
+            textarea.style.height = next + 'px';
+        } catch (e) {}
+    }
+
+    function handleMobileAutoResizeInput(e) {
+        autoResizeTextareaMobile(e.currentTarget);
+    }
+
+    function bindAutoResizeForAllSummariesMobile() {
+        if (window.innerWidth > 768) return;
+        document.querySelectorAll('.news-summary-input').forEach(el => {
+            autoResizeTextareaMobile(el);
+            if (!el.dataset.autoResizeBound) {
+                el.addEventListener('input', handleMobileAutoResizeInput, false);
+                el.dataset.autoResizeBound = '1';
+            }
+        });
+    }
+
+    // ==================== 倒计时功能 ====================
+
+    // 获取检测时间预估
+    function fetchDetectionEstimation(digestId) {
+        axios.get(`/api/digest/${digestId}/duplicate-detection-estimate`)
+            .then(response => {
+                detectionEstimation = response.data.estimation;
+                console.log('获取到时间预估:', detectionEstimation);
+
+                // 显示预估时间信息
+                showEstimationInfo(digestId, detectionEstimation);
+
+                // 启动倒计时
+                startCountdown(digestId);
+            })
+            .catch(error => {
+                if (error.response && error.response.status === 404) {
+                    console.log('检测已完成或预估不可用，停止状态更新');
+                    // 检测已完成，停止状态更新
+                    stopDuplicateDetectionUpdates();
+                    removeEstimationDisplay(digestId);
+                } else {
+                    console.warn('获取时间预估失败:', error);
+                    // 其他错误，显示检测中状态
+                    showDetectionInProgress(digestId);
+                }
+            });
+    }
+
+    // 显示预估信息
+    function showEstimationInfo(digestId, estimation) {
+        const estimationHtml = `
+            <div class="alert alert-info detection-estimation" data-digest-id="${digestId}">
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm text-info me-3" role="status">
+                        <span class="visually-hidden">检测中...</span>
+                    </div>
+                    <div class="flex-grow-1">
+                        <h6 class="alert-heading mb-2">
+                            <i class="bi bi-hourglass-split"></i> 重复检测进行中
+                        </h6>
+                        <div class="estimation-details">
+                            <div class="row text-start">
+                                <div class="col-md-3">
+                                    <small class="text-muted">已完成比较:</small><br>
+                                    <strong class="completed-comparisons-count text-success">0</strong> / <strong>${estimation.total_comparisons}</strong> 次
+                                </div>
+                                <div class="col-md-3">
+                                    <small class="text-muted">总比较次数:</small><br>
+                                    <strong>${estimation.total_comparisons}</strong> 次
+                                </div>
+                                <div class="col-md-3">
+                                    <small class="text-muted">预估总时间:</small><br>
+                                    <strong class="countdown-total-time">${estimation.estimated_duration_minutes}</strong> 分钟
+                                </div>
+                                <div class="col-md-3">
+                                    <small class="text-muted">预计完成:</small><br>
+                                    <strong class="countdown-completion-time">${formatEstimatedCompletionTime(estimation.estimated_completion_time)}</strong>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <div class="progress mb-2" style="height: 8px;">
+                                    <div class="progress-bar bg-info progress-bar-striped progress-bar-animated detection-progress-bar"
+                                         role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                    </div>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="countdown-display text-primary fw-bold" style="font-size: 1.1em;">
+                                        预计剩余: <span class="countdown-time">计算中...</span>
+                                    </span>
+                                    <div class="text-end">
+                                        <div class="detection-progress-text small text-muted">0% (0/0)</div>
+                                        <div class="comparison-status small text-muted">
+                                            <i class="bi bi-arrow-repeat text-info"></i> 已比较 <span class="current-comparisons">0</span> 次
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 在快报内容的开头插入预估信息
+        const digestContent = getDetectionContainer();
+        if (digestContent) {
+            // 移除已存在的预估信息
+            const existingEstimation = digestContent.querySelector('.detection-estimation');
+            if (existingEstimation) {
+                existingEstimation.remove();
+            }
+
+            digestContent.insertAdjacentHTML('afterbegin', estimationHtml);
+        }
+    }
+
+    // 显示检测进行中（没有预估时的降级显示）
+    function showDetectionInProgress(digestId) {
+        const progressHtml = `
+            <div class="alert alert-info detection-estimation" data-digest-id="${digestId}">
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm text-info me-3" role="status">
+                        <span class="visually-hidden">检测中...</span>
+                    </div>
+                    <div class="flex-grow-1">
+                        <h6 class="alert-heading mb-1">
+                            <i class="bi bi-hourglass-split"></i> 重复检测进行中
+                        </h6>
+                        <p class="mb-0 small">正在使用AI分析新闻是否与历史内容重复，请耐心等待...</p>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const digestContent = getDetectionContainer();
+        if (digestContent) {
+            const existingEstimation = digestContent.querySelector('.detection-estimation');
+            if (existingEstimation) {
+                existingEstimation.remove();
+            }
+            digestContent.insertAdjacentHTML('afterbegin', progressHtml);
+        }
+    }
+
+    // 启动倒计时
+    function startCountdown(digestId) {
+        if (!detectionEstimation || !detectionEstimation.estimated_completion_time) {
+            console.warn('没有预估完成时间，无法启动倒计时');
+            return;
+        }
+
+        // 清除现有倒计时
+        stopCountdown();
+
+        const targetTime = new Date(detectionEstimation.estimated_completion_time);
+
+        countdownInterval = setInterval(() => {
+            updateCountdownDisplay(targetTime, digestId);
+        }, 1000);
+
+        console.log('已启动倒计时，预计完成时间:', targetTime);
+    }
+
+    // 停止倒计时
+    function stopCountdown() {
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+        }
+    }
+
+    // 更新倒计时显示
+    function updateCountdownDisplay(targetTime, digestId) {
+        const now = new Date();
+        const remainingMs = targetTime.getTime() - now.getTime();
+
+        const container = getDetectionContainer();
+        const countdownElement = container ? container.querySelector('.countdown-time') : null;
+        if (!countdownElement) {
+            return;
+        }
+
+        if (remainingMs <= 0) {
+            countdownElement.textContent = '即将完成';
+            countdownElement.parentElement.className = 'countdown-display text-success fw-bold';
+            return;
+        }
+
+        const remainingSeconds = Math.floor(remainingMs / 1000);
+        const minutes = Math.floor(remainingSeconds / 60);
+        const seconds = remainingSeconds % 60;
+
+        if (minutes > 0) {
+            countdownElement.textContent = `${minutes} 分 ${seconds} 秒`;
+        } else {
+            countdownElement.textContent = `${seconds} 秒`;
+        }
+
+        // 根据剩余时间调整颜色
+        const countdownContainer = countdownElement.parentElement;
+        if (remainingSeconds < 30) {
+            countdownContainer.className = 'countdown-display text-success fw-bold';
+        } else if (remainingSeconds < 120) {
+            countdownContainer.className = 'countdown-display text-warning fw-bold';
+        } else {
+            countdownContainer.className = 'countdown-display text-primary fw-bold';
+        }
+    }
+
+    // 更新进度显示
+    function updateProgressDisplay(digestId, progress) {
+        const container = getDetectionContainer();
+        const progressBar = container ? container.querySelector('.detection-progress-bar') : null;
+        const progressText = container ? container.querySelector('.detection-progress-text') : null;
+        const completedCount = container ? container.querySelector('.completed-comparisons-count') : null;
+
+        if (progressBar && progress) {
+            progressBar.style.width = `${progress.current_progress}%`;
+            progressBar.setAttribute('aria-valuenow', progress.current_progress);
+        }
+
+        if (progressText && progress) {
+            progressText.textContent = `${progress.current_progress.toFixed(1)}% (${progress.completed_comparisons}/${progress.total_comparisons})`;
+        }
+
+        // 更新已完成比较次数显示
+        if (completedCount && progress) {
+            completedCount.textContent = progress.completed_comparisons;
+            // 根据进度动态更新颜色
+            if (progress.current_progress >= 100) {
+                completedCount.className = 'completed-comparisons-count text-success fw-bold';
+            } else if (progress.current_progress >= 50) {
+                completedCount.className = 'completed-comparisons-count text-warning fw-bold';
+            } else {
+                completedCount.className = 'completed-comparisons-count text-info';
+            }
+        }
+
+        // 更新当前比较次数显示
+        const currentComparisons = container ? container.querySelector('.current-comparisons') : null;
+        if (currentComparisons && progress) {
+            currentComparisons.textContent = progress.completed_comparisons;
+        }
+
+        // 如果进度接近完成，更新倒计时
+        if (progress && progress.estimated_remaining_time_seconds) {
+            const newTargetTime = new Date(Date.now() + progress.estimated_remaining_time_seconds * 1000);
+
+            // 重新调整倒计时目标时间
+            if (detectionEstimation) {
+                detectionEstimation.estimated_completion_time = newTargetTime.toISOString();
+            }
+        }
+    }
+
+    // 格式化预计完成时间
+    function formatEstimatedCompletionTime(isoTimeString) {
+        if (!isoTimeString) return '计算中...';
+
+        try {
+            const time = new Date(isoTimeString);
+            const now = new Date();
+            const diffMs = time.getTime() - now.getTime();
+
+            if (diffMs < 0) {
+                return '即将完成';
+            }
+
+            const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+            if (diffMinutes < 1) {
+                return '不到1分钟';
+            } else if (diffMinutes < 60) {
+                return `约 ${diffMinutes} 分钟后`;
+            } else {
+                return time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            }
+        } catch (error) {
+            console.warn('格式化完成时间失败:', error);
+            return '计算中...';
+        }
+    }
+
+    // 移除预估信息显示
+    function removeEstimationDisplay(digestId, targetContainer = null) {
+        const container = targetContainer || getDetectionContainer();
+        if (!container) return;
+
+        const estimationElement = container.querySelector(`.detection-estimation[data-digest-id="${digestId}"]`);
+        if (estimationElement) {
+            // 添加淡出动画
+            estimationElement.style.transition = 'opacity 0.5s ease-out';
+            estimationElement.style.opacity = '0';
+
+            setTimeout(() => {
+                if (estimationElement.parentNode) {
+                    estimationElement.parentNode.removeChild(estimationElement);
+                }
+            }, 500);
+        }
+    }
+
 </script>
 {% endblock %}

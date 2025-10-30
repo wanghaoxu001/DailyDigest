@@ -268,6 +268,23 @@
 <div class="row mb-5">
     <div class="col-lg-4 col-md-6 mb-4">
         <div class="feature-card">
+            <div class="feature-label">系统日志</div>
+            <h4 class="feature-title">📋 日志监控</h4>
+            <div class="mb-3">
+                <span class="badge bg-danger" id="recentErrors">0</span> 错误
+                <span class="badge bg-warning text-dark ms-2" id="recentWarnings">0</span> 警告
+            </div>
+            <div id="recentLogsList" style="max-height: 150px; overflow-y: auto; font-size: 0.85rem; color: #666;">
+                <p class="text-muted">加载中...</p>
+            </div>
+            <a href="/logs" class="feature-link mt-3">
+                查看完整日志 <i class="bi bi-arrow-right"></i>
+            </a>
+        </div>
+    </div>
+    
+    <div class="col-lg-4 col-md-6 mb-4">
+        <div class="feature-card">
             <div class="feature-label">新闻管理</div>
             <h4 class="feature-title">今日安全资讯</h4>
             <p class="feature-description">
@@ -355,76 +372,187 @@
 
 {% block extra_js %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    loadDashboardStats();
-});
-
-// 加载仪表板统计数据
-function loadDashboardStats() {
-    // 今日新闻数量
-    fetch('/api/news/today/count')
-        .then(response => response.json())
-        .then(data => {
-            document.getElementById('todayNewsCount').textContent = data.count || 0;
-        })
-        .catch(error => {
-            console.error('Error loading today news count:', error);
-            document.getElementById('todayNewsCount').textContent = '0';
-        });
+// 优化的仪表板脚本
+(function() {
+    'use strict';
     
-    // 历史快报数量
-    fetch('/api/digest/count')
-        .then(response => response.json())
-        .then(data => {
-            document.getElementById('totalDigestsCount').textContent = data.count || 0;
-        })
-        .catch(error => {
-            console.error('Error loading digests count:', error);
-            document.getElementById('totalDigestsCount').textContent = '0';
-        });
+    // 配置
+    const LOADING_TEXT = '<span class="spinner-border spinner-border-sm" role="status"></span>';
+    const ERROR_TEXT = '错误';
     
-    // 活跃新闻源数量
-    fetch('/api/sources/active/count')
-        .then(response => response.json())
-        .then(data => {
-            document.getElementById('activeSourcesCount').textContent = data.count || 0;
-        })
-        .catch(error => {
-            console.error('Error loading sources count:', error);
-            document.getElementById('activeSourcesCount').textContent = '0';
-        });
-    
-    // 系统状态
-    fetch('/api/system/status')
-        .then(response => response.json())
-        .then(data => {
-            const statusElement = document.getElementById('systemStatus');
-            if (data.status === 'healthy') {
-                statusElement.textContent = '正常';
-            } else if (data.status === 'degraded') {
-                statusElement.textContent = '降级';
-            } else {
-                statusElement.textContent = '异常';
-            }
-        })
-        .catch(error => {
-            console.error('Error loading system status:', error);
-            document.getElementById('systemStatus').textContent = '未知';
-        });
-}
-
-// 添加平滑滚动效果
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        const target = document.querySelector(this.getAttribute('href'));
-        if (target) {
-            target.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-            });
+    // 工具函数：添加加载动画
+    function showLoading(elementId) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.innerHTML = LOADING_TEXT;
+            element.style.opacity = '0.6';
         }
+    }
+    
+    // 工具函数：显示数据
+    function showData(elementId, value) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.textContent = value;
+            element.style.opacity = '1';
+            // 添加淡入动画
+            element.style.animation = 'fadeIn 0.3s ease-in';
+        }
+    }
+    
+    // 工具函数：显示错误
+    function showError(elementId) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.textContent = ERROR_TEXT;
+            element.style.opacity = '0.5';
+        }
+    }
+    
+    // 使用Promise.all并发加载所有数据
+    function loadDashboardStats() {
+        // 显示加载状态
+        showLoading('todayNewsCount');
+        showLoading('totalDigestsCount');
+        showLoading('activeSourcesCount');
+        showLoading('systemStatus');
+        
+        // 加载日志信息
+        loadRecentLogs();
+        
+        // 并发请求所有API
+        Promise.all([
+            fetch('/api/news/today/count').then(r => r.json()).catch(() => ({ count: 0 })),
+            fetch('/api/digest/count').then(r => r.json()).catch(() => ({ count: 0 })),
+            fetch('/api/sources/active/count').then(r => r.json()).catch(() => ({ count: 0 })),
+            fetch('/api/system/status').then(r => r.json()).catch(() => ({ status: 'unknown' }))
+        ])
+        .then(([newsData, digestData, sourcesData, statusData]) => {
+            // 今日新闻数量
+            showData('todayNewsCount', newsData.count || 0);
+            
+            // 历史快报数量
+            showData('totalDigestsCount', digestData.count || 0);
+            
+            // 活跃新闻源数量
+            showData('activeSourcesCount', sourcesData.count || 0);
+            
+            // 系统状态
+            const statusMap = {
+                'healthy': '正常',
+                'degraded': '降级',
+                'error': '异常',
+                'unknown': '未知'
+            };
+            showData('systemStatus', statusMap[statusData.status] || '未知');
+        })
+        .catch(error => {
+            console.error('Error loading dashboard stats:', error);
+            // 显示错误状态
+            showError('todayNewsCount');
+            showError('totalDigestsCount');
+            showError('activeSourcesCount');
+            showError('systemStatus');
+        });
+    }
+    
+    // 加载最近日志
+    async function loadRecentLogs() {
+        try {
+            // 获取错误日志
+            const errorResponse = await fetch('/api/logs/?buffer_name=error&max_lines=100');
+            const errorData = await errorResponse.json();
+            
+            // 获取日志统计
+            const statsResponse = await fetch('/api/logs/statistics');
+            const statsData = await statsResponse.json();
+            
+            // 统计错误和警告数量
+            let errorCount = 0;
+            let warningCount = 0;
+            
+            if (statsData && statsData.statistics) {
+                Object.values(statsData.statistics).forEach(stat => {
+                    if (stat.level_counts) {
+                        errorCount += stat.level_counts.ERROR || 0;
+                        warningCount += stat.level_counts.WARNING || 0;
+                    }
+                });
+            }
+            
+            // 更新徽章
+            document.getElementById('recentErrors').textContent = errorCount;
+            document.getElementById('recentWarnings').textContent = warningCount;
+            
+            // 显示最近的5条重要日志（错误或警告）
+            const recentLogsList = document.getElementById('recentLogsList');
+            if (errorData && errorData.logs && errorData.logs.length > 0) {
+                const importantLogs = errorData.logs
+                    .filter(log => log.includes('ERROR') || log.includes('WARNING'))
+                    .slice(-5)
+                    .reverse();
+                
+                if (importantLogs.length > 0) {
+                    let html = '<div class="list-group list-group-flush">';
+                    importantLogs.forEach(log => {
+                        const isError = log.includes('ERROR');
+                        const badgeClass = isError ? 'bg-danger' : 'bg-warning text-dark';
+                        const badgeText = isError ? 'ERROR' : 'WARNING';
+                        
+                        // 提取日志消息（简化显示）
+                        const parts = log.split(' - ');
+                        const message = parts.length > 3 ? parts.slice(3).join(' - ') : log;
+                        const shortMessage = message.length > 60 ? message.substring(0, 60) + '...' : message;
+                        
+                        html += `
+                            <div class="list-group-item border-0 px-0 py-2">
+                                <span class="badge ${badgeClass} me-2">${badgeText}</span>
+                                <small>${shortMessage}</small>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    recentLogsList.innerHTML = html;
+                } else {
+                    recentLogsList.innerHTML = '<p class="text-success mb-0"><i class="bi bi-check-circle"></i> 暂无异常日志</p>';
+                }
+            } else {
+                recentLogsList.innerHTML = '<p class="text-success mb-0"><i class="bi bi-check-circle"></i> 暂无异常日志</p>';
+            }
+        } catch (error) {
+            console.error('加载日志信息失败:', error);
+            document.getElementById('recentLogsList').innerHTML = '<p class="text-muted mb-0">加载失败</p>';
+        }
+    }
+    
+    // 添加淡入动画样式
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    `;
+    document.head.appendChild(style);
+    
+    // DOM加载完成后执行
+    document.addEventListener('DOMContentLoaded', function() {
+        loadDashboardStats();
+        
+        // 添加平滑滚动效果
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
     });
-});
+})();
 </script>
 {% endblock %} 

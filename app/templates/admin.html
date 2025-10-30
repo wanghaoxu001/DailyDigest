@@ -118,6 +118,7 @@
                                 <th>状态</th>
                                 <th>配置</th>
                                 <th>最后抓取</th>
+                                <th>上次结果</th>
                                 <th>Token使用量</th>
                                 <th>操作</th>
                             </tr>
@@ -148,6 +149,11 @@
                     <option value="重大漏洞风险提示">漏洞风险</option>
                     <option value="其他">其他</option>
                 </select>
+                <div class="input-group input-group-sm" style="width: 260px;">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" id="newsKeywordInput" placeholder="关键词（标题/摘要）">
+                    <button class="btn btn-outline-secondary" id="btnNewsKeywordSearch">搜索</button>
+                </div>
                 <div class="d-flex align-items-center">
                     <label class="form-label me-2 mb-0" style="white-space: nowrap;">时间范围:</label>
                     <input type="date" class="form-control form-control-sm me-2" id="startDateFilter" style="width: 140px;" title="开始日期">
@@ -211,7 +217,7 @@
 
     <!-- 定时任务管理 -->
     <div class="tab-pane fade" id="scheduler" role="tabpanel">
-        <h3>定时任务管理</h3>
+        <h3>定时任务管理 <small class="text-muted">(Cron调度)</small></h3>
 
         <!-- 任务状态概览 -->
         <div class="row mb-4">
@@ -220,11 +226,11 @@
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
-                                <h5 class="card-title text-white">调度器状态</h5>
+                                <h5 class="card-title text-white">Cron状态</h5>
                                 <div class="card-text text-white" id="schedulerStatus">检查中...</div>
                             </div>
                             <div class="align-self-center">
-                                <i class="bi bi-cpu fs-1 text-white"></i>
+                                <i class="bi bi-calendar-check fs-1 text-white"></i>
                             </div>
                         </div>
                     </div>
@@ -265,7 +271,7 @@
                     <div class="card-body">
                         <div class="d-flex justify-content-between">
                             <div>
-                                <h5 class="card-title">活跃任务数</h5>
+                                <h5 class="card-title">运行中任务</h5>
                                 <p class="card-text" id="activeJobs">0</p>
                             </div>
                             <div class="align-self-center">
@@ -277,59 +283,85 @@
             </div>
         </div>
 
+        <!-- Cron配置管理 -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0"><i class="bi bi-clock"></i> Cron调度配置</h5>
+                <button class="btn btn-sm btn-success" id="btnReloadCrontab">
+                    <i class="bi bi-arrow-repeat"></i> 重新加载Crontab
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="cronConfigTable">
+                        <thead>
+                            <tr>
+                                <th>任务名称</th>
+                                <th>Cron表达式</th>
+                                <th>描述</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cronConfigTableBody">
+                            <!-- Cron配置将动态加载 -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="alert alert-info mt-3">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>Cron表达式说明：</strong>
+                    <code>分钟 小时 日 月 星期</code> 
+                    例如：<code>0 */1 * * *</code> = 每小时执行，
+                    <code>30 */2 * * *</code> = 每2小时的第30分钟执行，
+                    <code>0 2 * * *</code> = 每天凌晨2点执行
+                    <a href="https://crontab.guru/" target="_blank" class="ms-2">在线工具 ↗</a>
+                </div>
+            </div>
+        </div>
+
         <!-- 任务控制面板 -->
         <div class="card mb-4">
             <div class="card-header">
-                <h5 class="card-title mb-0">任务控制</h5>
+                <h5 class="card-title mb-0"><i class="bi bi-play-circle"></i> 手动触发任务</h5>
             </div>
             <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6>手动触发任务</h6>
-                        <button class="btn btn-warning me-2 mb-2" id="btnManualCrawl">
-                            <i class="bi bi-cloud-download"></i> 立即抓取新闻源
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-warning" id="btnManualCrawl">
+                        <i class="bi bi-cloud-download"></i> 立即抓取新闻源
+                    </button>
+                    <div class="btn-group" role="group">
+                        <button class="btn btn-info" id="btnManualEventGroups">
+                            <i class="bi bi-diagram-3"></i> 立即计算相似度和分组
                         </button>
-                        <div class="btn-group mb-2" role="group">
-                            <button class="btn btn-info" id="btnManualEventGroups">
-                                <i class="bi bi-diagram-3"></i> 立即计算相似度和分组
-                            </button>
-                            <button type="button" class="btn btn-outline-info dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown">
-                                <span class="visually-hidden">配置选项</span>
-                            </button>
-                            <ul class="dropdown-menu">
-                                <li>
-                                    <div class="dropdown-item-text">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" id="useMultiprocessSimilarity" checked>
-                                            <label class="form-check-label" for="useMultiprocessSimilarity">
-                                                使用多进程计算（推荐）
-                                            </label>
-                                        </div>
-                                        <small class="text-muted">多进程计算可大幅提升相似度计算性能</small>
+                        <button type="button" class="btn btn-outline-info dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown">
+                            <span class="visually-hidden">配置选项</span>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li>
+                                <div class="dropdown-item-text">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="useMultiprocessSimilarity" checked>
+                                        <label class="form-check-label" for="useMultiprocessSimilarity">
+                                            使用多进程计算（推荐）
+                                        </label>
                                     </div>
-                                </li>
-                                <li>
-                                    <hr class="dropdown-divider">
-                                </li>
-                                <li><a class="dropdown-item" href="#" onclick="showSimilarityHelp()"><i class="bi bi-question-circle"></i> 性能说明</a></li>
-                            </ul>
-                        </div>
+                                    <small class="text-muted">多进程计算可大幅提升相似度计算性能</small>
+                                </div>
+                            </li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#" onclick="showSimilarityHelp()"><i class="bi bi-question-circle"></i> 性能说明</a></li>
+                        </ul>
                     </div>
-                    <div class="col-md-6">
-                        <h6>定时设置</h6>
-                        <form id="schedulerSettingsForm">
-                            <div class="mb-2">
-                                <label for="crawlInterval" class="form-label">新闻源抓取间隔（小时）</label>
-                                <input type="number" class="form-control" id="crawlInterval" min="0.25" max="24" step="0.25" value="1">
-                            </div>
-                            <div class="mb-2">
-                                <label for="eventInterval" class="form-label">相似度计算和分组间隔（小时）</label>
-                                <input type="number" class="form-control" id="eventInterval" min="1" max="24" step="1" value="1">
-                                <small class="text-muted">计算文章相似度并生成事件分组，优化后大幅提升前端响应速度</small>
-                            </div>
-                            <button type="submit" class="btn btn-primary">更新设置</button>
-                        </form>
-                    </div>
+                    <button type="button" class="btn btn-outline-danger" id="btnManualCacheCleanup">
+                        <i class="bi bi-trash3"></i> 立即执行缓存清理
+                    </button>
+                </div>
+                <div class="alert alert-light mt-3 mb-0">
+                    <i class="bi bi-lightbulb"></i>
+                    <strong>提示：</strong>手动触发的任务会立即在后台执行，不受cron调度影响。任务执行状态会记录在下方的执行历史中。
                 </div>
             </div>
         </div>
@@ -518,6 +550,44 @@
     </div>
 </div>
 
+<!-- Cron配置编辑模态框 -->
+<div class="modal fade" id="cronConfigModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">编辑Cron配置</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="cronConfigForm">
+                    <input type="hidden" id="cronConfigId">
+                    <div class="mb-3">
+                        <label for="cronTaskName" class="form-label">任务名称</label>
+                        <input type="text" class="form-control" id="cronTaskName" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="cronExpression" class="form-label">Cron表达式</label>
+                        <input type="text" class="form-control" id="cronExpression" required placeholder="例如: 0 */1 * * *">
+                        <small class="form-text text-muted">格式：分钟 小时 日 月 星期</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="cronDescription" class="form-label">描述</label>
+                        <textarea class="form-control" id="cronDescription" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="cronEnabled">
+                        <label class="form-check-label" for="cronEnabled">启用此任务</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="btnSaveCronConfig">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 新闻详情模态框 -->
 <div class="modal fade" id="newsModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -638,6 +708,12 @@
         document.getElementById('newsCategoryFilter').addEventListener('change', loadNews);
         document.getElementById('startDateFilter').addEventListener('change', loadNews);
         document.getElementById('endDateFilter').addEventListener('change', loadNews);
+        // 关键词搜索：按钮点击与回车触发
+        const keywordInput = document.getElementById('newsKeywordInput');
+        document.getElementById('btnNewsKeywordSearch').addEventListener('click', function() { loadNews(1); });
+        keywordInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); loadNews(1); }
+        });
         
         // 清除时间筛选
         document.getElementById('btnClearDateFilter').addEventListener('click', function() {
@@ -672,12 +748,11 @@
         // 手动触发任务按钮
         document.getElementById('btnManualCrawl').addEventListener('click', triggerManualCrawl);
         document.getElementById('btnManualEventGroups').addEventListener('click', triggerManualEventGroups);
+        document.getElementById('btnManualCacheCleanup').addEventListener('click', triggerManualCacheCleanup);
 
-        // 定时设置表单提交
-        document.getElementById('schedulerSettingsForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            updateSchedulerSettings();
-        });
+        // Cron配置管理按钮
+        document.getElementById('btnReloadCrontab').addEventListener('click', reloadCrontab);
+        document.getElementById('btnSaveCronConfig').addEventListener('click', saveCronConfig);
 
         // 历史记录刷新和过滤
         document.getElementById('btnRefreshHistory').addEventListener('click', () => loadSchedulerStatus());
@@ -711,10 +786,11 @@
     });
 
     let currentNewsId = null;
+    let currentLogsSourceId = null;
 
     // 加载新闻源列表
     function loadSources() {
-        axios.get('/api/sources')
+        axios.get('/api/sources/')
             .then(response => {
                 const sources = response.data;
                 const tbody = document.getElementById('sourcesTableBody');
@@ -740,6 +816,7 @@
                             </small>
                         </td>
                         <td>${source.last_fetch || '从未'}</td>
+                        <td>${renderFetchStatusBadge(source)}</td>
                         <td>${source.tokens_used ? source.tokens_used.toLocaleString() : '0'} 
                             <button class="btn btn-sm btn-outline-secondary" title="重置Token计数" onclick="resetTokens(${source.id})">
                                 <i class="bi bi-arrow-counterclockwise"></i>
@@ -757,7 +834,7 @@
                             <button class="btn btn-sm btn-outline-success me-1" onclick="fetchSource(${source.id})">
                                 <i class="bi bi-cloud-download"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-info me-1" onclick="viewLogs()">
+                            <button class="btn btn-sm btn-outline-info me-1" onclick="viewLogsBySource(${source.id})">
                                 <i class="bi bi-file-text"></i>
                             </button>
                             <button class="btn btn-sm btn-outline-danger" onclick="deleteSource(${source.id})">
@@ -790,14 +867,16 @@
         const category = document.getElementById('newsCategoryFilter').value;
         const startDate = document.getElementById('startDateFilter').value;
         const endDate = document.getElementById('endDateFilter').value;
+        const keyword = (document.getElementById('newsKeywordInput')?.value || '').trim();
 
         // 确保skip是有效的非负整数
         const skip = (page - 1) * 20;
-        let url = `/api/news?skip=${skip}&limit=20&enable_similarity_filter=false`;
+        let url = `/api/news/?skip=${skip}&limit=20&enable_similarity_filter=false`;
         if (sourceId) url += `&source_id=${sourceId}`;
         if (category) url += `&category=${category}`;
         if (startDate) url += `&start_date=${startDate}`;
         if (endDate) url += `&end_date=${endDate}`;
+        if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
 
         axios.get(url)
             .then(response => {
@@ -1118,7 +1197,7 @@
                 });
         } else {
             // 创建
-            axios.post('/api/sources', sourceData)
+            axios.post('/api/sources/', sourceData)
                 .then(() => {
                     // 关闭模态框
                     const modal = bootstrap.Modal.getInstance(document.getElementById('sourceModal'));
@@ -1172,28 +1251,48 @@
             const originalHtml = btn.innerHTML;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 抓取中...';
             btn.disabled = true;
-            
+
             axios.post(`/api/sources/${sourceId}/crawl`)
-                .then(() => {
+                .then(response => {
                     // 恢复按钮状态
                     btn.innerHTML = originalHtml;
                     btn.disabled = false;
-                    
-                    // 显示成功消息
-                    alert('抓取任务已触发，请查看日志了解详情');
-                    
-                    // 自动打开日志查看器
+
+                    const data = response.data;
+                    const executionId = data.execution_id;
+                    const status = data.status;
+                    const message = data.message;
+                    const count = data.count;
+
+                    // 显示详细的成功消息
+                    let alertMessage = `抓取完成!\n状态: ${status}\n消息: ${message}\n文章数: ${count}`;
+
+                    if (executionId) {
+                        alertMessage += `\n执行记录ID: ${executionId}`;
+
+                        // 询问用户是否查看执行历史
+                        if (confirm(alertMessage + '\n\n是否查看执行历史详情？')) {
+                            // 跳转到执行历史页面（如果有的话）
+                            // 这里假设有一个执行历史页面，您可以根据实际情况调整
+                            window.location.href = `/admin#executions`;
+                            // 或者打开一个模态框显示详情
+                        }
+                    } else {
+                        alert(alertMessage);
+                    }
+
+                    // 自动打开该源的日志查看器
                     setTimeout(() => {
-                        viewLogs();
+                        viewLogsBySource(sourceId);
                     }, 500);
                 })
                 .catch(error => {
                     // 恢复按钮状态
                     btn.innerHTML = originalHtml;
                     btn.disabled = false;
-                    
+
                     console.error('Error triggering crawl:', error);
-                    alert('触发抓取任务失败');
+                    alert('触发抓取任务失败: ' + (error.response?.data?.detail || error.message));
                 });
         }
     }
@@ -1280,6 +1379,25 @@
         return date.toLocaleString();
     }
     
+    // 辅助函数 - 渲染抓取结果标记
+    function renderFetchStatusBadge(source) {
+        const status = source.last_fetch_status || 'unknown';
+        const result = source.last_fetch_result || {};
+        const message = result.message || '';
+        const count = (result.count !== undefined && result.count !== null) ? `新增: ${result.count}` : '';
+        const exec = result.execution_time ? `耗时: ${result.execution_time}` : '';
+        const title = [message, count, exec].filter(Boolean).join(' | ');
+        const map = {
+            success: { cls: 'bg-success', text: '成功' },
+            error: { cls: 'bg-danger', text: '失败' },
+            warning: { cls: 'bg-warning text-dark', text: '警告' },
+            skipped: { cls: 'bg-secondary', text: '跳过' },
+            unknown: { cls: 'bg-secondary', text: '-' }
+        };
+        const m = map[status] || map.unknown;
+        return `<span class="badge ${m.cls}" role="button" title="${title}" onclick="viewLogsBySource(${source.id})">${m.text}</span>`;
+    }
+    
     // 辅助函数 - 获取分类标签
     function getCategoryLabel(category) {
         const categories = {
@@ -1293,15 +1411,23 @@
         return categories[category] || categories['其他'];
     }
     
-    // 日志查看功能
+    // 日志查看功能（支持按源过滤）
     function viewLogs() {
+        currentLogsSourceId = null;
+        fetchLogs();
+        const modal = new bootstrap.Modal(document.getElementById('logsModal'));
+        modal.show();
+    }
+    function viewLogsBySource(sourceId) {
+        currentLogsSourceId = sourceId;
         fetchLogs();
         const modal = new bootstrap.Modal(document.getElementById('logsModal'));
         modal.show();
     }
     
     function fetchLogs() {
-        axios.get('/api/sources/logs')
+        const url = currentLogsSourceId ? `/api/sources/${currentLogsSourceId}/logs` : '/api/sources/logs';
+        axios.get(url)
             .then(response => {
                 const { logs, timestamp } = response.data;
                 document.getElementById('logContent').textContent = logs.join('\n');
@@ -1345,11 +1471,13 @@
         const endDate = document.getElementById('endDateFilter').value;
         
         // 构建API URL
-        let url = `/api/news?limit=1000&enable_similarity_filter=false`; // 使用较大的limit值获取所有符合条件的新闻
+        let url = `/api/news/?limit=1000&enable_similarity_filter=false`; // 使用较大的limit值获取所有符合条件的新闻
         if (sourceId) url += `&source_id=${sourceId}`;
         if (category) url += `&category=${category}`;
         if (startDate) url += `&start_date=${startDate}`;
         if (endDate) url += `&end_date=${endDate}`;
+        const keyword = (document.getElementById('newsKeywordInput')?.value || '').trim();
+        if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
         
         // 获取所有符合条件的新闻ID
         axios.get(url)
@@ -1559,13 +1687,15 @@
             axios.get('/api/sources/scheduler/status'),
             axios.get('/api/sources/scheduler/statistics'),
             axios.get('/api/sources/scheduler/history?limit=20'),
-            axios.get('/api/sources/scheduler/errors?limit=10')
+            axios.get('/api/sources/scheduler/errors?limit=10'),
+            axios.get('/api/sources/scheduler/cron-configs')
         ])
         .then(responses => {
             schedulerData.status = responses[0].data;
             schedulerData.statistics = responses[1].data;
             schedulerData.history = responses[2].data.history;
             schedulerData.errors = responses[3].data.errors;
+            schedulerData.cronConfigs = responses[4].data.configs;
             
             updateSchedulerDisplay();
         })
@@ -1578,74 +1708,145 @@
     // 更新定时任务显示
     function updateSchedulerDisplay() {
         updateStatusCards();
-        updateSchedulerSettingsForm();
+        updateCronConfigTable();
         updateHistoryTable();
         updateErrorsTable();
     }
 
-            // 更新状态卡片
-        function updateStatusCards() {
-            const status = schedulerData.status;
-            const stats = schedulerData.statistics;
-            
-            // 更新调度器状态
-            const statusEl = document.getElementById('schedulerStatus');
-            if (status.is_running) {
-                let statusText = '<i class="bi bi-check-circle"></i> 运行中';
-                
-                // 如果有正在执行的任务，显示当前任务信息和进度
-                if (status.current_tasks && Object.keys(status.current_tasks).length > 0) {
-                    const currentTasks = Object.entries(status.current_tasks);
-                    const taskInfo = currentTasks.map(([taskType, taskData]) => {
-                        let taskStr = `${getTaskTypeLabel(taskType)}: ${taskData.message || '执行中'}`;
-                        
-                                        // 如果有进度信息，添加进度条
-                if (taskData.progress && (taskData.progress.percentage !== undefined || (taskData.progress.current && taskData.progress.total))) {
-                    const percentage = taskData.progress.percentage || 0;
-                    const current = taskData.progress.current || 0;
-                    const total = taskData.progress.total || 0;
-                    
-                    taskStr += `<br><div class="progress mt-1" style="height: 15px;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" 
-                             style="width: ${percentage}%" aria-valuenow="${percentage}" aria-valuemin="0" aria-valuemax="100">
-                            ${percentage.toFixed(1)}%
-                        </div>
-                    </div>`;
-                    
-                    if (current && total) {
-                        taskStr += `<small class="text-light">${current}/${total}</small>`;
-                    }
-                }
-                        
-                        return taskStr;
-                    }).join('<br><br>');
-                    statusText += `<br><div class="mt-2"><small class="text-muted">当前任务:</small><br>${taskInfo}</div>`;
-                }
-                
-                statusEl.innerHTML = statusText;
-                statusEl.className = 'card-text text-white';
-            } else {
-                statusEl.innerHTML = '<i class="bi bi-x-circle"></i> 已停止';
-                statusEl.className = 'card-text text-white';
-            }
-            
-            // 更新统计数据
-            document.getElementById('executionCount').textContent = stats.total_executions_24h || 0;
-            document.getElementById('errorCount').textContent = stats.total_errors_24h || 0;
-            document.getElementById('activeJobs').textContent = status.scheduled_jobs_count || 0;
-            
-            // 更新当前任务数量
-            const currentTasksCount = status.current_tasks ? Object.keys(status.current_tasks).length : 0;
-            if (currentTasksCount > 0) {
-                document.getElementById('activeJobs').innerHTML = `${status.scheduled_jobs_count || 0} <small class="text-info">(${currentTasksCount} 运行中)</small>`;
-            }
-        }
-
-    // 更新定时设置表单显示
-    function updateSchedulerSettingsForm() {
+    // 更新状态卡片
+    function updateStatusCards() {
         const status = schedulerData.status;
-        document.getElementById('crawlInterval').value = status.crawl_sources_interval || 1;
-        document.getElementById('eventInterval').value = status.event_generation_interval || 1;
+        const stats = schedulerData.statistics;
+        
+        // 更新Cron状态
+        const statusEl = document.getElementById('schedulerStatus');
+        if (status.cron_verified) {
+            statusEl.innerHTML = '<i class="bi bi-check-circle"></i> Cron已配置';
+        } else {
+            statusEl.innerHTML = '<i class="bi bi-x-circle"></i> Cron未配置';
+        }
+        
+        // 更新运行中任务数
+        const runningTasksCount = status.running_tasks ? status.running_tasks.length : 0;
+        
+        // 显示运行中的任务信息
+        
+        // 更新统计数据
+        document.getElementById('executionCount').textContent = stats.total_executions_24h || 0;
+        document.getElementById('errorCount').textContent = stats.total_errors_24h || 0;
+        document.getElementById('activeJobs').textContent = runningTasksCount;
+    }
+
+    // 更新Cron配置表格
+    function updateCronConfigTable() {
+        const tbody = document.getElementById('cronConfigTableBody');
+        tbody.innerHTML = '';
+        
+        if (!schedulerData.cronConfigs || schedulerData.cronConfigs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">暂无配置</td></tr>';
+            return;
+        }
+        
+        schedulerData.cronConfigs.forEach(config => {
+            const row = document.createElement('tr');
+            
+            // 任务名称映射
+            const taskNameMap = {
+                'crawl_sources': '新闻源抓取',
+                'event_groups': '事件分组',
+                'cache_cleanup': '缓存清理'
+            };
+            
+            const statusBadge = config.enabled 
+                ? '<span class="badge bg-success">启用</span>' 
+                : '<span class="badge bg-secondary">禁用</span>';
+            
+            row.innerHTML = `
+                <td>${taskNameMap[config.task_name] || config.task_name}</td>
+                <td><code>${config.cron_expression}</code></td>
+                <td>${config.description || '-'}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="editCronConfig(${config.id})">
+                        <i class="bi bi-pencil"></i> 编辑
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    // 编辑Cron配置
+    function editCronConfig(configId) {
+        const config = schedulerData.cronConfigs.find(c => c.id === configId);
+        if (!config) return;
+        
+        const taskNameMap = {
+            'crawl_sources': '新闻源抓取',
+            'event_groups': '事件分组',
+            'cache_cleanup': '缓存清理'
+        };
+        
+        document.getElementById('cronConfigId').value = config.id;
+        document.getElementById('cronTaskName').value = taskNameMap[config.task_name] || config.task_name;
+        document.getElementById('cronExpression').value = config.cron_expression;
+        document.getElementById('cronDescription').value = config.description || '';
+        document.getElementById('cronEnabled').checked = config.enabled;
+        
+        const modal = new bootstrap.Modal(document.getElementById('cronConfigModal'));
+        modal.show();
+    }
+
+    // 保存Cron配置
+    function saveCronConfig() {
+        const configId = document.getElementById('cronConfigId').value;
+        const cronExpression = document.getElementById('cronExpression').value;
+        const description = document.getElementById('cronDescription').value;
+        const enabled = document.getElementById('cronEnabled').checked;
+        
+        if (!cronExpression) {
+            alert('请输入Cron表达式');
+            return;
+        }
+        
+        axios.put(`/api/sources/scheduler/cron-configs/${configId}`, {
+            cron_expression: cronExpression,
+            description: description,
+            enabled: enabled
+        })
+            .then(response => {
+                showSchedulerSuccess('Cron配置已更新');
+                bootstrap.Modal.getInstance(document.getElementById('cronConfigModal')).hide();
+                loadSchedulerStatus(); // 重新加载数据
+            })
+            .catch(error => {
+                showSchedulerError('更新配置失败: ' + (error.response?.data?.detail || error.message));
+            });
+    }
+
+    // 重新加载Crontab
+    function reloadCrontab() {
+        const btn = document.getElementById('btnReloadCrontab');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 重新加载中...';
+        
+        axios.post('/api/sources/scheduler/cron-reload')
+            .then(response => {
+                if (response.data.verification && response.data.verification.verified) {
+                    showSchedulerSuccess('Crontab已重新加载并验证成功');
+                } else {
+                    showSchedulerSuccess('Crontab已重新加载，但验证失败: ' + (response.data.verification?.message || ''));
+                }
+                setTimeout(() => loadSchedulerStatus(), 1000);
+            })
+            .catch(error => {
+                showSchedulerError('重新加载Crontab失败: ' + (error.response?.data?.detail || error.message));
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
     }
 
     // 更新历史记录表
@@ -2040,35 +2241,6 @@
     }
 
     // 更新定时设置
-    function updateSchedulerSettings() {
-        const crawlInterval = parseFloat(document.getElementById('crawlInterval').value);
-        const eventInterval = parseInt(document.getElementById('eventInterval').value);
-        
-        if (isNaN(crawlInterval) || crawlInterval < 0.25 || crawlInterval > 24) {
-            showSchedulerError('新闻源抓取间隔必须在0.25-24小时之间');
-            return;
-        }
-        
-        if (isNaN(eventInterval) || eventInterval < 1 || eventInterval > 24) {
-            showSchedulerError('事件分组生成间隔必须在1-24小时之间');
-            return;
-        }
-        
-        const settings = {
-            crawl_sources_interval: crawlInterval,
-            event_generation_interval: eventInterval
-        };
-        
-        axios.put('/api/sources/scheduler/settings', settings)
-            .then(response => {
-                showSchedulerSuccess('定时任务设置已更新');
-                loadSchedulerStatus();
-            })
-            .catch(error => {
-                showSchedulerError('更新设置失败: ' + (error.response?.data?.detail || error.message));
-            });
-    }
-
     // 过滤历史记录
     function filterHistory() {
         const taskType = document.getElementById('historyTaskFilter').value;
@@ -2213,6 +2385,26 @@
         `;
         
         return html;
+    }
+
+    // 手动触发缓存清理
+    function triggerManualCacheCleanup() {
+        const btn = document.getElementById('btnManualCacheCleanup');
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 执行中...';
+        axios.post('/api/sources/scheduler/cache-cleanup-now')
+            .then(() => {
+                showSchedulerSuccess('已手动触发缓存清理任务');
+                setTimeout(() => loadSchedulerStatus(), 1000);
+            })
+            .catch(err => {
+                showSchedulerError('手动触发缓存清理失败: ' + (err.response?.data?.detail || err.message));
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            });
     }
 </script>
 
