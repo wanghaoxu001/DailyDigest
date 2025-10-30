@@ -7,6 +7,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+try:
+    from starlette.middleware.proxy_headers import ProxyHeadersMiddleware  # type: ignore
+    _HAS_PROXY_HEADERS = True
+except Exception:
+    ProxyHeadersMiddleware = None  # type: ignore
+    _HAS_PROXY_HEADERS = False
 from dotenv import load_dotenv
 import uvicorn
 
@@ -116,20 +122,44 @@ async def lifespan(app: FastAPI):
     init_db()
     update_sources_table()
     run_migrations()
+
+    # 初始化并启动APScheduler调度器
+    try:
+        from app.services.task_scheduler import init_scheduler, start_scheduler
+        init_scheduler()
+        start_scheduler()
+        logger.info("✓ APScheduler 调度器已启动")
+    except Exception as e:
+        logger.error(f"启动APScheduler调度器失败: {e}", exc_info=True)
+
+    # ✨ 系统Cron已移除 - 所有任务现在由APScheduler管理
+    # 注释原因：第二阶段重构完成，所有任务已迁移到APScheduler
+    # 如需恢复系统cron作为备份，取消下面注释：
+    #
+    # try:
+    #     from app.services.cron_manager import cron_manager
+    #     result = cron_manager.reload_crontab()
+    #     if result['status'] == 'success':
+    #         logger.info("✓ 系统Cron配置已加载并安装（备份机制）")
+    #     else:
+    #         logger.warning(f"⚠ 系统Cron配置加载失败: {result['message']}")
+    # except Exception as e:
+    #     logger.error(f"加载系统cron配置时出错: {e}")
+
     logger.info("应用启动完成")
-    
+
     yield
-    
+
     # 关闭时执行
     logger.info("应用正在关闭")
-    
-    # 停止调度器服务
+
+    # 关闭APScheduler调度器
     try:
-        from app.services.scheduler import scheduler_service
-        scheduler_service.stop()
-        logger.info("调度器服务已停止")
+        from app.services.task_scheduler import shutdown_scheduler
+        shutdown_scheduler(wait=True)
+        logger.info("✓ APScheduler 调度器已关闭")
     except Exception as e:
-        logger.error(f"停止调度器服务时出错: {e}")
+        logger.error(f"关闭APScheduler调度器失败: {e}", exc_info=True)
 
 
 # 创建应用
@@ -138,6 +168,10 @@ app = FastAPI(title="每日安全快报系统", lifespan=lifespan)
 # 配置中间件
 # 首先添加URL解码中间件（需要最先处理）
 app.add_middleware(URLDecodeMiddleware)
+
+# 使应用在反向代理后正确识别原始协议/客户端IP（依赖 X-Forwarded-* 头）
+if _HAS_PROXY_HEADERS:
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 app.add_middleware(
     CORSMiddleware,
@@ -162,9 +196,19 @@ app.include_router(api_router)
 async def health_check():
     """健康检查端点，用于容器和负载均衡器检查服务状态"""
     from datetime import datetime
+    import pytz
+    
+    # 使用北京时间并包含时区信息
+    beijing_tz = pytz.timezone('Asia/Shanghai')
+    now = datetime.now()
+    if now.tzinfo is None:
+        now = beijing_tz.localize(now)
+    else:
+        now = now.astimezone(beijing_tz)
+    
     return {
         "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": now.isoformat(),
         "service": "Daily Digest System"
     }
 
@@ -191,6 +235,20 @@ async def digest_page(request: Request):
 @app.get("/digest/{digest_id}")
 async def digest_detail_page(request: Request, digest_id: int):
     return templates.TemplateResponse("digest.html", {"request": request})
+
+
+# 日志管理页面路由
+@app.get("/logs", response_class=HTMLResponse)
+async def logs_page(request: Request):
+    """日志管理页面"""
+    return templates.TemplateResponse("logs.html", {"request": request})
+
+
+# 业务日志页面路由
+@app.get("/logs/business", response_class=HTMLResponse)
+async def business_logs_page(request: Request):
+    """业务日志中心页面（爬取、LLM处理、快报生成）"""
+    return templates.TemplateResponse("logs_business.html", {"request": request})
 
 
 # 管理页面路由
@@ -264,4 +322,11 @@ async def handle_proxy_encoded_url(rest_of_path: str, request: Request):
 
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=18899, reload=True)
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=18899,
+        reload=True,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+    )

@@ -1,0 +1,637 @@
+{% extends "base.html" %}
+
+{% block title %}业务日志中心 - 每日安全快报系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 业务流程状态卡片 */
+    .flow-status-card {
+        border-left: 4px solid #0d6efd;
+        transition: all 0.3s ease;
+    }
+
+    .flow-status-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .flow-status-card.status-running {
+        border-left-color: #0dcaf0;
+    }
+
+    .flow-status-card.status-success {
+        border-left-color: #198754;
+    }
+
+    .flow-status-card.status-error {
+        border-left-color: #dc3545;
+    }
+
+    .flow-status-card.status-warning {
+        border-left-color: #ffc107;
+    }
+
+    /* 日志类别标签 */
+    .category-badge {
+        font-size: 0.85rem;
+        padding: 0.4rem 0.8rem;
+        margin: 0.2rem;
+        display: inline-block;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .category-badge:hover {
+        transform: scale(1.05);
+    }
+
+    .category-badge.active {
+        box-shadow: 0 0 10px rgba(13, 110, 253, 0.5);
+    }
+
+    /* 日志显示区域 */
+    .log-display {
+        background-color: #1e1e1e;
+        color: #d4d4d4;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        padding: 20px;
+        border-radius: 8px;
+        max-height: 600px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .log-line {
+        padding: 4px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .log-line:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    /* 日志级别颜色 */
+    .log-level-INFO { color: #4ec9b0; }
+    .log-level-WARNING { color: #dcdcaa; }
+    .log-level-ERROR { color: #f48771; }
+    .log-level-CRITICAL { color: #f14c4c; }
+    .log-level-DEBUG { color: #9cdcfe; }
+
+    /* 时间线图表容器 */
+    #timelineChart {
+        height: 300px;
+        margin-top: 20px;
+    }
+
+    /* 统计数字 */
+    .stat-number {
+        font-size: 2rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .stat-label {
+        font-size: 0.875rem;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    /* 刷新按钮动画 */
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    .btn-refresh.loading i {
+        animation: spin 1s linear infinite;
+    }
+
+    /* 加载骨架屏 */
+    .skeleton {
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 200% 100%;
+        animation: loading 1.5s ease-in-out infinite;
+    }
+
+    @keyframes loading {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+
+    .skeleton-text {
+        height: 20px;
+        margin: 10px 0;
+        border-radius: 4px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h2><i class="bi bi-speedometer2"></i> 业务日志中心</h2>
+                <p class="text-muted">实时监控爬取、LLM处理、快报生成三大业务流程</p>
+            </div>
+            <div>
+                <button class="btn btn-primary btn-refresh" onclick="refreshAll()">
+                    <i class="bi bi-arrow-clockwise"></i> 刷新
+                </button>
+                <button class="btn btn-outline-secondary" onclick="toggleAutoRefresh()">
+                    <i class="bi bi-play-circle" id="autoRefreshIcon"></i>
+                    <span id="autoRefreshText">启动自动刷新</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 业务流程状态卡片 -->
+<div class="row mb-4" id="flowStatusContainer">
+    <div class="col-md-4">
+        <div class="card flow-status-card skeleton">
+            <div class="card-body">
+                <div class="skeleton-text"></div>
+                <div class="skeleton-text"></div>
+                <div class="skeleton-text"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card flow-status-card skeleton">
+            <div class="card-body">
+                <div class="skeleton-text"></div>
+                <div class="skeleton-text"></div>
+                <div class="skeleton-text"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card flow-status-card skeleton">
+            <div class="card-body">
+                <div class="skeleton-text"></div>
+                <div class="skeleton-text"></div>
+                <div class="skeleton-text"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 日志统计面板 -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-bar-chart-line"></i> 日志趋势 (最近24小时)</h5>
+            </div>
+            <div class="card-body">
+                <div id="timelineChart"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 日志分类统计 -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-funnel"></i> 日志分类过滤</h5>
+                <small class="text-muted">点击标签筛选，再次点击取消筛选</small>
+            </div>
+            <div class="card-body">
+                <div id="categoryBadges">
+                    <span class="badge bg-primary category-badge" data-category="all">
+                        全部 <span class="badge bg-light text-dark" id="count-all">0</span>
+                    </span>
+                    <span class="badge bg-info category-badge" data-category="crawler">
+                        <i class="bi bi-cloud-download"></i> 爬取 <span class="badge bg-light text-dark" id="count-crawler">0</span>
+                    </span>
+                    <span class="badge bg-success category-badge" data-category="llm">
+                        <i class="bi bi-cpu"></i> LLM <span class="badge bg-light text-dark" id="count-llm">0</span>
+                    </span>
+                    <span class="badge bg-warning text-dark category-badge" data-category="digest">
+                        <i class="bi bi-file-earmark-text"></i> 快报 <span class="badge bg-light text-dark" id="count-digest">0</span>
+                    </span>
+                    <span class="badge bg-secondary category-badge" data-category="task">
+                        <i class="bi bi-gear"></i> 任务 <span class="badge bg-light text-dark" id="count-task">0</span>
+                    </span>
+                    <span class="badge bg-danger category-badge" data-category="error">
+                        <i class="bi bi-exclamation-triangle"></i> 错误 <span class="badge bg-light text-dark" id="count-error">0</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 日志显示区域 -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-terminal"></i> 业务日志输出</h5>
+                <div>
+                    <button class="btn btn-sm btn-outline-light" onclick="clearLogDisplay()">
+                        <i class="bi bi-trash"></i> 清空显示
+                    </button>
+                    <button class="btn btn-sm btn-outline-light" onclick="downloadLogs()">
+                        <i class="bi bi-download"></i> 下载日志
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="log-display" id="logDisplay">
+                    <div class="text-center text-muted py-5">
+                        <i class="bi bi-hourglass-split" style="font-size: 3rem;"></i>
+                        <p class="mt-3">正在加载业务日志...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- ECharts for better visualization -->
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+
+<script>
+// 全局变量
+let currentCategory = 'all';
+let allLogs = [];
+let autoRefreshInterval = null;
+let timelineChart = null;
+
+// 页面加载完成后初始化
+document.addEventListener('DOMContentLoaded', function() {
+    initializeChart();
+    refreshAll();
+    setupCategoryFilters();
+});
+
+// 初始化ECharts图表
+function initializeChart() {
+    const chartDom = document.getElementById('timelineChart');
+    timelineChart = echarts.init(chartDom);
+
+    const option = {
+        title: {
+            text: '业务日志时间分布',
+            left: 'center',
+            textStyle: { fontSize: 14 }
+        },
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'cross' }
+        },
+        legend: {
+            data: ['INFO', 'WARNING', 'ERROR', '总计'],
+            bottom: 10
+        },
+        grid: {
+            left: '3%',
+            right: '4%',
+            bottom: '15%',
+            containLabel: true
+        },
+        xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: []
+        },
+        yAxis: {
+            type: 'value',
+            name: '日志数量'
+        },
+        series: [
+            {
+                name: 'INFO',
+                type: 'line',
+                stack: 'Total',
+                smooth: true,
+                itemStyle: { color: '#4ec9b0' },
+                areaStyle: { opacity: 0.3 },
+                data: []
+            },
+            {
+                name: 'WARNING',
+                type: 'line',
+                stack: 'Total',
+                smooth: true,
+                itemStyle: { color: '#dcdcaa' },
+                areaStyle: { opacity: 0.3 },
+                data: []
+            },
+            {
+                name: 'ERROR',
+                type: 'line',
+                stack: 'Total',
+                smooth: true,
+                itemStyle: { color: '#f48771' },
+                areaStyle: { opacity: 0.3 },
+                data: []
+            },
+            {
+                name: '总计',
+                type: 'line',
+                smooth: true,
+                itemStyle: { color: '#0d6efd' },
+                lineStyle: { width: 3 },
+                data: []
+            }
+        ]
+    };
+
+    timelineChart.setOption(option);
+
+    // 响应式调整
+    window.addEventListener('resize', function() {
+        timelineChart.resize();
+    });
+}
+
+// 刷新所有数据
+async function refreshAll() {
+    const refreshBtn = document.querySelector('.btn-refresh');
+    refreshBtn.classList.add('loading');
+
+    try {
+        await Promise.all([
+            loadFlowStatus(),
+            loadBusinessLogs(),
+            loadTimeline()
+        ]);
+    } catch (error) {
+        console.error('刷新失败:', error);
+        showNotification('刷新失败: ' + error.message, 'danger');
+    } finally {
+        refreshBtn.classList.remove('loading');
+    }
+}
+
+// 加载业务流程状态
+async function loadFlowStatus() {
+    try {
+        const response = await axios.get('/api/logs/business/flow-status');
+        const flows = response.data.flows;
+
+        const container = document.getElementById('flowStatusContainer');
+        container.innerHTML = flows.map(flow => {
+            const statusClass = flow.status === 'running' ? 'status-running' :
+                               flow.status === 'success' ? 'status-success' :
+                               flow.status === 'error' ? 'status-error' : '';
+
+            const statusIcon = flow.status === 'running' ? 'bi-arrow-repeat' :
+                              flow.status === 'success' ? 'bi-check-circle' :
+                              flow.status === 'error' ? 'bi-x-circle' : 'bi-question-circle';
+
+            const statusText = flow.status === 'running' ? '运行中' :
+                              flow.status === 'success' ? '成功' :
+                              flow.status === 'error' ? '失败' :
+                              flow.status === 'monitoring' ? '监控中' : '未知';
+
+            return `
+                <div class="col-md-4">
+                    <div class="card flow-status-card ${statusClass}">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="card-title mb-0">
+                                    <i class="bi ${statusIcon}"></i> ${flow.flow_name}
+                                </h5>
+                                <span class="badge bg-secondary">${statusText}</span>
+                            </div>
+
+                            <p class="text-muted small mb-2">${flow.progress.message || '暂无信息'}</p>
+
+                            ${flow.progress.current !== undefined ? `
+                                <div class="progress mb-2" style="height: 8px;">
+                                    <div class="progress-bar" role="progressbar"
+                                         style="width: ${(flow.progress.current/flow.progress.total*100).toFixed(0)}%">
+                                    </div>
+                                </div>
+                                <small class="text-muted">${flow.progress.current}/${flow.progress.total}</small>
+                            ` : ''}
+
+                            <div class="row mt-3 text-center">
+                                <div class="col-6">
+                                    <div class="stat-number text-danger">${flow.error_count}</div>
+                                    <div class="stat-label">错误</div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="stat-number text-warning">${flow.warning_count}</div>
+                                    <div class="stat-label">警告</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+    } catch (error) {
+        console.error('加载流程状态失败:', error);
+    }
+}
+
+// 加载业务日志
+async function loadBusinessLogs() {
+    try {
+        const response = await axios.get('/api/logs/business?max_lines=500');
+        const data = response.data;
+
+        allLogs = data.entries;
+
+        // 更新分类统计
+        updateCategoryBadges(data.categories, data.total_lines);
+
+        // 渲染日志
+        renderLogs();
+
+    } catch (error) {
+        console.error('加载业务日志失败:', error);
+        document.getElementById('logDisplay').innerHTML = `
+            <div class="text-center text-danger py-5">
+                <i class="bi bi-exclamation-triangle" style="font-size: 3rem;"></i>
+                <p class="mt-3">加载日志失败: ${error.message}</p>
+            </div>
+        `;
+    }
+}
+
+// 加载时间线数据
+async function loadTimeline() {
+    try {
+        const response = await axios.get('/api/logs/business/timeline?hours=24');
+        const timeline = response.data.timeline;
+
+        if (timeline.length === 0) {
+            return;
+        }
+
+        const hours = timeline.map(item => item.hour.split(' ')[1]);
+        const infoData = timeline.map(item => item.info);
+        const warningData = timeline.map(item => item.warning);
+        const errorData = timeline.map(item => item.error);
+        const totalData = timeline.map(item => item.total);
+
+        timelineChart.setOption({
+            xAxis: { data: hours },
+            series: [
+                { data: infoData },
+                { data: warningData },
+                { data: errorData },
+                { data: totalData }
+            ]
+        });
+
+    } catch (error) {
+        console.error('加载时间线失败:', error);
+    }
+}
+
+// 更新分类标签统计
+function updateCategoryBadges(categories, total) {
+    document.getElementById('count-all').textContent = total;
+    document.getElementById('count-crawler').textContent = categories.crawler || 0;
+    document.getElementById('count-llm').textContent = categories.llm || 0;
+    document.getElementById('count-digest').textContent = categories.digest || 0;
+    document.getElementById('count-task').textContent = categories.task || 0;
+    document.getElementById('count-error').textContent = categories.error || 0;
+}
+
+// 设置分类过滤器
+function setupCategoryFilters() {
+    document.querySelectorAll('.category-badge').forEach(badge => {
+        badge.addEventListener('click', function() {
+            const category = this.getAttribute('data-category');
+
+            // 移除所有active状态
+            document.querySelectorAll('.category-badge').forEach(b => b.classList.remove('active'));
+
+            // 设置当前active
+            this.classList.add('active');
+
+            currentCategory = category;
+            renderLogs();
+        });
+    });
+
+    // 默认选中"全部"
+    document.querySelector('[data-category="all"]').classList.add('active');
+}
+
+// 渲染日志
+function renderLogs() {
+    let filteredLogs = allLogs;
+
+    // 根据分类过滤
+    if (currentCategory !== 'all') {
+        filteredLogs = allLogs.filter(log => {
+            const logger = log.logger.toLowerCase();
+
+            if (currentCategory === 'crawler') {
+                return logger.includes('crawler');
+            } else if (currentCategory === 'llm') {
+                return logger.includes('llm');
+            } else if (currentCategory === 'digest') {
+                return logger.includes('digest');
+            } else if (currentCategory === 'task') {
+                return logger.includes('cron_jobs') || logger.includes('task');
+            } else if (currentCategory === 'error') {
+                return log.level === 'ERROR' || log.level === 'CRITICAL';
+            }
+            return true;
+        });
+    }
+
+    const logDisplay = document.getElementById('logDisplay');
+
+    if (filteredLogs.length === 0) {
+        logDisplay.innerHTML = `
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                <p class="mt-3">没有符合条件的日志</p>
+            </div>
+        `;
+        return;
+    }
+
+    // 反转顺序，最新的在上面
+    const reversedLogs = [...filteredLogs].reverse();
+
+    logDisplay.innerHTML = reversedLogs.map(log => {
+        const levelClass = `log-level-${log.level}`;
+        return `<div class="log-line ${levelClass}">${escapeHtml(log.text)}</div>`;
+    }).join('');
+}
+
+// HTML转义
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// 清空日志显示
+function clearLogDisplay() {
+    if (confirm('确定要清空当前显示的日志吗？（仅清空显示，不影响服务器日志）')) {
+        allLogs = [];
+        renderLogs();
+    }
+}
+
+// 下载日志
+async function downloadLogs() {
+    try {
+        const category = currentCategory === 'all' ? '' : `?category=${currentCategory}`;
+        window.location.href = `/api/logs/download/business${category}`;
+        showNotification('日志下载已开始', 'success');
+    } catch (error) {
+        showNotification('下载失败: ' + error.message, 'danger');
+    }
+}
+
+// 切换自动刷新
+function toggleAutoRefresh() {
+    const icon = document.getElementById('autoRefreshIcon');
+    const text = document.getElementById('autoRefreshText');
+
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+        icon.className = 'bi bi-play-circle';
+        text.textContent = '启动自动刷新';
+        showNotification('自动刷新已停止', 'info');
+    } else {
+        autoRefreshInterval = setInterval(refreshAll, 10000); // 每10秒刷新
+        icon.className = 'bi bi-pause-circle';
+        text.textContent = '停止自动刷新';
+        showNotification('自动刷新已启动 (每10秒)', 'success');
+    }
+}
+
+// 显示通知
+function showNotification(message, type = 'info') {
+    // 简单的通知实现，可以替换为更好的UI库
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
+    alertDiv.style.zIndex = '9999';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 3000);
+}
+</script>
+{% endblock %}
