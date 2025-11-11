@@ -19,7 +19,7 @@ async def get_task_executions(
     """
     获取任务执行记录
     
-    - **task_type**: 可选，按任务类型过滤 (crawl_sources, event_groups, cache_cleanup, system)
+    - **task_type**: 可选，按任务类型过滤 (crawl_sources, cache_cleanup, system)
     - **status**: 可选，按状态过滤 (running, success, error, warning, info)
     - **limit**: 返回记录数量，默认50，最大500
     - **offset**: 分页偏移量，默认0
@@ -234,7 +234,6 @@ async def get_task_types():
     """
     return [
         "crawl_sources",      # 新闻源抓取
-        "event_groups",       # 事件分组
         "cache_cleanup",      # 缓存清理
         "system",            # 系统事件
         "scheduler",         # 调度器事件

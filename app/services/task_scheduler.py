@@ -135,7 +135,6 @@ def add_or_update_job_from_config(config):
     # 映射任务名称到实际的执行函数
     task_functions = {
         'crawl_sources': scheduled_crawl_sources,
-        'event_groups': scheduled_event_groups,
         'cache_cleanup': scheduled_cache_cleanup,
     }
 
@@ -224,17 +223,6 @@ def scheduled_crawl_sources():
         logger.error(f"定时抓取任务执行失败: {e}", exc_info=True)
 
 
-def scheduled_event_groups():
-    """定时执行事件分组任务"""
-    logger.info("定时任务触发: 事件分组")
-
-    try:
-        from app.services.event_group_tasks import execute_event_groups_task
-        execute_event_groups_task()
-    except Exception as e:
-        logger.error(f"定时事件分组任务执行失败: {e}", exc_info=True)
-
-
 def scheduled_cache_cleanup():
     """定时执行缓存清理任务"""
     logger.info("定时任务触发: 缓存清理")
@@ -256,14 +244,6 @@ def trigger_crawl_sources_manual() -> int:
 
     logger.info("手动触发: 新闻源抓取任务")
     return execute_crawl_sources_task()
-
-
-def trigger_event_groups_manual() -> int:
-    """手动触发事件分组任务，返回execution_id"""
-    from app.services.event_group_tasks import execute_event_groups_task
-
-    logger.info("手动触发: 事件分组任务")
-    return execute_event_groups_task()
 
 
 def trigger_cache_cleanup_manual() -> int:

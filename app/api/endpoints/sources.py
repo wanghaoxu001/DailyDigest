@@ -504,7 +504,7 @@ def get_scheduler_status():
         
         # 获取最近的执行记录（每种任务类型最近一条）
         recent_executions = {}
-        for task_type in ['crawl_sources', 'event_groups', 'cache_cleanup']:
+        for task_type in ['crawl_sources', 'cache_cleanup']:
             executions = task_execution_service.get_task_executions(
                 task_type=task_type,
                 limit=1
@@ -662,73 +662,6 @@ def _background_crawl_sources(execution_id: int):
     except Exception as e:
         logger.error(f"后台抓取任务执行失败: {e}", exc_info=True)
         # 错误已在 _execute_crawl_logic 中记录到 TaskExecution
-
-
-class EventGroupsRequest(BaseModel):
-    use_multiprocess: bool = True
-
-
-@router.post("/scheduler/event-groups-now")
-def trigger_event_groups_now(background_tasks: BackgroundTasks, request: EventGroupsRequest = EventGroupsRequest()):
-    """
-    立即触发事件分组生成任务
-
-    使用 FastAPI BackgroundTasks 在主进程中执行
-    """
-    try:
-        from app.services.event_group_tasks import execute_event_groups_task
-        from app.db.session import SessionLocal
-        from app.models.task_execution import TaskExecution
-
-        method = "多进程" if request.use_multiprocess else "单进程"
-
-        db = SessionLocal()
-        try:
-            # 检查是否已有任务在运行
-            execution = TaskExecution.acquire_lock(
-                db,
-                'event_groups',
-                f'手动触发：事件分组任务（{method}）'
-            )
-
-            if not execution:
-                return {
-                    "status": "running",
-                    "detail": "事件分组任务已在运行中，请稍后再试"
-                }
-
-            execution_id = execution.id
-
-            # 将任务添加到后台执行队列
-            background_tasks.add_task(
-                _background_event_groups,
-                execution_id,
-                request.use_multiprocess
-            )
-
-            return {
-                "status": "started",
-                "execution_id": execution_id,
-                "detail": f"事件分组任务已加入队列（{method}计算）"
-            }
-        finally:
-            db.close()
-
-    except Exception as e:
-        logger.error(f"手动触发事件分组生成失败: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"手动触发事件分组生成失败: {str(e)}",
-        )
-
-
-def _background_event_groups(execution_id: int, use_multiprocess: bool):
-    """后台执行事件分组任务的包装函数"""
-    try:
-        from app.services.event_group_tasks import _execute_event_groups_logic
-        _execute_event_groups_logic(execution_id, use_multiprocess)
-    except Exception as e:
-        logger.error(f"后台事件分组任务执行失败: {e}", exc_info=True)
 
 
 @router.post("/scheduler/cache-cleanup-now")

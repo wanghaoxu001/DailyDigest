@@ -607,10 +607,6 @@ def get_business_flow_status():
                 TaskExecution.task_type == "crawl_sources"
             ).order_by(TaskExecution.start_time.desc()).first()
 
-            recent_event_groups = db.query(TaskExecution).filter(
-                TaskExecution.task_type == "event_groups"
-            ).order_by(TaskExecution.start_time.desc()).first()
-
             # 获取每个流程的最近日志
             crawler_logs = log_manager.get_recent_logs("crawler", 10, structured=True)
             llm_logs = log_manager.get_recent_logs("llm", 10, structured=True)

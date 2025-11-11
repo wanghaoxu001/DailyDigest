@@ -380,179 +380,16 @@ def get_recent_news(
     # 默认按创建时间倒序排序
     query = query.order_by(News.created_at.desc())
 
-    # 获取所有符合条件的新闻（不先分页）
-    all_items = query.all()
-    
-    # 使用预计算数据过滤掉与已用于快报的新闻相似的文章（性能优化）
-    from app.services.news_similarity_storage import news_similarity_storage_service
-    filtered_items = news_similarity_storage_service.filter_similar_to_used_news_precomputed(all_items, db)
-    
-    # 重新计算总数
-    total = len(filtered_items)
-    
+    # 计算总数
+    total = query.count()
+
     # 应用分页
-    paginated_items = filtered_items[skip:skip + limit]
+    paginated_items = query.offset(skip).limit(limit).all()
 
     # 手动转换ORM对象到字典
     news_dicts = [news_to_dict(news, db) for news in paginated_items]
 
     return {"total": total, "items": news_dicts}
-
-
-@router.get("/recent/grouped", response_model=GroupedNewsListResponse)
-def get_recent_news_grouped(
-    hours: int = 24,
-    skip: Optional[int] = Query(0, description="Skip N items for pagination"),
-    limit: int = 100,
-    exclude_used: bool = False,
-    source_id: Optional[int] = None,
-    exclude_source_id: Optional[List[int]] = Query(None, description="Source IDs to exclude"),
-    category: Optional[List[str]] = Query(None, description="Category filters, can specify multiple"),
-    since_yesterday_digest: bool = Query(False, description="使用昨天最后一次快报时间作为开始时间"),
-    db: Session = Depends(get_db),
-):
-    """
-    获取最近一段时间的新闻，按事件分组，用于减少重复阅读
-    现在使用预计算的分组，大幅提高响应速度
-    """
-    skip = max(0, int(skip) if skip else 0)
-    
-    try:
-        # 使用预计算的事件分组（性能优化）
-        from app.services.news_similarity_storage import news_similarity_storage_service
-        
-        # 计算起始时间
-        if since_yesterday_digest:
-            # 获取昨天最后一次快报的时间
-            from app.models.digest import Digest
-            from datetime import time
-            
-            # 获取北京时间的当前时间
-            current_time = datetime.now(BEIJING_TZ)
-            # 构建昨天的日期范围（北京时间）
-            today = current_time.date()
-            yesterday_start = BEIJING_TZ.localize(datetime.combine(today - timedelta(days=1), time.min))
-            yesterday_end = BEIJING_TZ.localize(datetime.combine(today, time.min))
-            
-            # 查询昨天创建的最后一个快报
-            last_digest = (
-                db.query(Digest)
-                .filter(Digest.created_at >= yesterday_start)
-                .filter(Digest.created_at < yesterday_end)
-                .order_by(Digest.created_at.desc())
-                .first()
-            )
-            
-            if last_digest:
-                start_time = last_digest.created_at
-                # 计算从快报时间到现在的小时数
-                hours = int((current_time - start_time).total_seconds() / 3600)
-            else:
-                # 如果昨天没有快报，使用昨天开始时间
-                hours = int((current_time - yesterday_start).total_seconds() / 3600)
-
-        groups = news_similarity_storage_service.get_precomputed_groups(
-            db=db,
-            hours=hours,
-            categories=category,
-            source_ids=[source_id] if source_id else None,
-            exclude_source_ids=exclude_source_id,
-            exclude_used=exclude_used
-        )
-        
-        # 应用分页到分组
-        paginated_groups = groups[skip:skip + limit]
-        
-        # 转换为响应格式
-        response_groups = []
-        total_news_count = sum(group['news_count'] for group in groups)
-        
-        for group in paginated_groups:
-            # 转换primary新闻
-            primary_dict = news_to_dict(group['primary'], db)
-            
-            # 转换related新闻
-            related_dicts = [news_to_dict(news, db) for news in group['related']]
-            
-            response_group = {
-                'id': group['id'],
-                'event_label': group['event_label'],
-                'news_count': group['news_count'],
-                'sources': group['sources'],
-                'primary': primary_dict,
-                'related': related_dicts,
-                'similarity_scores': group['similarity_scores'],
-                'entities': group['entities'],  # 已经是dict格式
-                'is_standalone': group.get('is_standalone', False)
-            }
-            
-            response_groups.append(response_group)
-        
-        return {
-            'total_groups': len(groups),
-            'total_news': total_news_count,
-            'groups': response_groups
-        }
-        
-    except Exception as e:
-        logger.error(f"获取预计算分组失败，回退到实时计算: {str(e)}")
-        
-        # 回退到实时计算（保持兼容性）
-        current_time = datetime.now(BEIJING_TZ)
-        # 对于普通时间范围查询，需要转换为UTC时间与数据库比较
-        start_time_beijing = current_time - timedelta(hours=hours)
-        start_time = start_time_beijing.astimezone(pytz.UTC).replace(tzinfo=None)
-        query = db.query(News).filter(News.created_at >= start_time)
-        
-        if exclude_used:
-            query = query.filter(News.is_used_in_digest == False)
-        if source_id:
-            query = query.filter(News.source_id == source_id)
-        # 排除指定的来源
-        if exclude_source_id:
-            query = query.filter(~News.source_id.in_(exclude_source_id))
-        if category:
-            try:
-                category_enums = []
-                for cat_str in category:
-                    for enum_item in NewsCategory:
-                        if enum_item.value == cat_str:
-                            category_enums.append(enum_item)
-                            break
-                if category_enums:
-                    query = query.filter(News.category.in_(category_enums))
-                else:
-                    query = query.filter(News.id == -1)
-            except Exception:
-                query = query.filter(News.id == -1)
-        
-        all_news = query.order_by(News.created_at.desc()).all()
-        
-        # 使用简化的分组逻辑（避免实时相似度计算）
-        response_groups = []
-        total_news_count = len(all_news)
-        
-        # 将每条新闻作为独立的"组"返回
-        paginated_news = all_news[skip:skip + limit]
-        for i, news in enumerate(paginated_news):
-            response_group = {
-                'id': f'standalone_{news.id}',
-                'event_label': news.generated_title or news.title,
-                'news_count': 1,
-                'sources': [str(news.source_id)],
-                'primary': news_to_dict(news, db),
-                'related': [],
-                'similarity_scores': {},
-                'entities': {},
-                'is_standalone': True
-            }
-            response_groups.append(response_group)
-        
-        return {
-            'total_groups': len(response_groups),
-            'total_news': total_news_count,
-            'groups': response_groups
-        }
 
 
 @router.get("/recent/separated", response_model=SeparatedNewsResponse)
@@ -650,22 +487,19 @@ def get_recent_news_separated(
 
     # 获取所有符合条件的新闻
     all_items = query.all()
-    
-    # 使用预计算数据分离新闻：今日新文章 vs 与历史快报相似的文章
-    from app.services.news_similarity_storage import news_similarity_storage_service
-    separation_result = news_similarity_storage_service.group_todays_news_with_history_similar_precomputed(all_items, db)
-    
-    fresh_news = separation_result['fresh_news']
-    similar_to_history = separation_result['similar_to_history']
-    
+
+    # 简化逻辑：所有新闻都作为"新文章"返回，不再进行相似度分离
+    fresh_news = all_items
+    similar_to_history = []
+
     # 应用分页到新文章
     fresh_total = len(fresh_news)
     fresh_paginated = fresh_news[skip:skip + limit]
     fresh_dicts = [news_to_dict(news, db) for news in fresh_paginated]
-    
-    # 相似历史的文章不分页，全部返回（通常数量较少）
-    similar_total = len(similar_to_history)
-    similar_dicts = [news_to_dict(news, db) for news in similar_to_history]
+
+    # 相似历史的文章列表为空
+    similar_total = 0
+    similar_dicts = []
 
     return {
         "fresh_news": {

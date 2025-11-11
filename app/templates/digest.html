@@ -1,5 +1,5 @@
 {% extends "base.html" %} {% block title %}快报 - 每日安全快报系统{% endblock %} {% block extra_css %}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simplemde@1.11.2/dist/simplemde.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde@2.18.0/dist/easymde.min.css">
 <link rel="stylesheet" href="{{ url_for('static', path='css/github-pdf.css') }}">
 <style>
     .digest-preview {
@@ -769,10 +769,10 @@
     </div>
 </div>
 {% endblock %} {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/simplemde@1.11.2/dist/simplemde.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/easymde@2.18.0/dist/easymde.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
-    let simplemde = null;
+    let easymde = null;
     let currentDigestId = null;
     let currentEditMode = 'markdown'; // 'markdown' 或 'visual'
     let visualEditorData = null; // 存储可视化编辑器的数据
@@ -925,9 +925,9 @@
             
             currentEditMode = 'markdown';
             
-            // 如果SimpleMDE还未初始化，则创建它
-            if (!simplemde) {
-                simplemde = new SimpleMDE({
+            // 如果EasyMDE还未初始化，则创建它
+            if (!easymde) {
+                easymde = new EasyMDE({
                     element: document.getElementById('editDigestContent'),
                     spellChecker: false,
                     autosave: {
@@ -940,15 +940,15 @@
                 });
 
                 // 监听编辑器内容变化
-                simplemde.codemirror.on('change', function() {
+                easymde.codemirror.on('change', function() {
                     updatePreview();
                 });
             }
             
-            // 刷新SimpleMDE编辑器
-            if (simplemde && simplemde.codemirror) {
+            // 刷新EasyMDE编辑器
+            if (easymde && easymde.codemirror) {
                 setTimeout(() => {
-                    simplemde.codemirror.refresh();
+                    easymde.codemirror.refresh();
                     updatePreview();
                 }, 100);
             }
@@ -957,7 +957,7 @@
 
     // 将Markdown内容转换为可视化编辑器数据
     function convertMarkdownToVisual() {
-        const markdownContent = simplemde ? simplemde.value() : '';
+        const markdownContent = easymde ? easymde.value() : '';
         const digestTitle = document.getElementById('editDigestTitleInput').value;
         
         // 解析Markdown内容
@@ -977,8 +977,8 @@
         
         // 更新Markdown编辑器和标题
         document.getElementById('editDigestTitleInput').value = visualTitle;
-        if (simplemde) {
-            simplemde.value(markdownContent);
+        if (easymde) {
+            easymde.value(markdownContent);
         }
         
         // 更新预览
@@ -1008,10 +1008,10 @@
             btnShowPreview.classList.add('btn-outline-secondary');
             
             // 刷新编辑器
-            if (simplemde && simplemde.codemirror) {
+            if (easymde && easymde.codemirror) {
                 setTimeout(() => {
-                    simplemde.codemirror.refresh();
-                    simplemde.codemirror.focus();
+                    easymde.codemirror.refresh();
+                    easymde.codemirror.focus();
                 }, 100);
             }
         }
@@ -1054,9 +1054,9 @@
                     previewSection.classList.remove('mobile-visible');
                     
                     // 刷新编辑器
-                    if (simplemde && simplemde.codemirror) {
+                    if (easymde && easymde.codemirror) {
                         setTimeout(() => {
-                            simplemde.codemirror.refresh();
+                            easymde.codemirror.refresh();
                         }, 100);
                     }
                 }
@@ -1313,13 +1313,13 @@
                 document.getElementById('markdownEditSection').style.display = 'none';
 
                 // 初始化Markdown编辑器
-                if (simplemde) {
-                    console.log('设置SimpleMDE内容:', digest.content || '');
-                    simplemde.value(digest.content || '');
+                if (easymde) {
+                    console.log('设置EasyMDE内容:', digest.content || '');
+                    easymde.value(digest.content || '');
                     // 更新预览
                     updatePreview();
                 } else {
-                    simplemde = new SimpleMDE({
+                    easymde = new EasyMDE({
                         element: document.getElementById('editDigestContent'),
                         spellChecker: false,
                         autosave: {
@@ -1332,7 +1332,7 @@
                     });
 
                     // 监听编辑器内容变化
-                    simplemde.codemirror.on('change', function() {
+                    easymde.codemirror.on('change', function() {
                         updatePreview();
                     });
 
@@ -1385,11 +1385,11 @@
                         bindAutoResizeForAllSummariesMobile();
                     }
                     
-                    if (simplemde && simplemde.codemirror) {
+                    if (easymde && easymde.codemirror) {
                         // 延迟一下确保DOM完全渲染
                         setTimeout(() => {
-                            simplemde.codemirror.refresh();
-                            simplemde.codemirror.focus();
+                            easymde.codemirror.refresh();
+                            easymde.codemirror.focus();
                             // 再次兜底调整一次摘要高度
                             if (window.innerWidth <= 768) {
                                 bindAutoResizeForAllSummariesMobile();
@@ -1409,7 +1409,7 @@
     // 更新实时预览
     function updatePreview() {
         const title = document.getElementById('editDigestTitleInput').value || '快报标题';
-        const content = simplemde ? simplemde.value() : '';
+        const content = easymde ? easymde.value() : '';
         const date = new Date().toISOString().split('T')[0];
 
         // 调用预览API
@@ -1715,20 +1715,38 @@
             }
         });
         
-        // 移动端：初始化摘要高度并绑定输入自适应（加入防抖与焦点滚动锁定）
+        // 移动端：初始化摘要高度并绑定输入自适应（加入 IME 保护与焦点滚动锁定）
         const summaryEl = newsDiv.querySelector('.news-summary-input');
         if (summaryEl && window.innerWidth <= 768) {
+            // 初始化高度
             if (typeof autoResizeTextareaMobile === 'function') {
                 autoResizeTextareaMobile(summaryEl);
             }
-            summaryEl.addEventListener('input', function() {
+
+            // 绑定输入事件（带 IME 保护）
+            summaryEl.addEventListener('input', function(e) {
+                // 如果正在进行输入法输入，跳过高度调整
+                if (imeComposingMap.get(e.target)) {
+                    return;
+                }
                 debouncedResize(summaryEl);
             });
+
+            // 添加 IME composition 事件监听
+            summaryEl.addEventListener('compositionstart', handleCompositionStart);
+            summaryEl.addEventListener('compositionend', handleCompositionEnd);
+
+            // 改进的焦点滚动锁定
             summaryEl.addEventListener('focus', function(e) {
-                const prevScrollTop = e.target.scrollTop;
-                setTimeout(() => {
-                    e.target.scrollTop = prevScrollTop;
-                }, 0);
+                // 使用 preventScroll 选项（如果浏览器支持）
+                const initialScrollTop = e.target.scrollTop;
+
+                // 使用 RAF 确保稳定
+                requestAnimationFrame(() => {
+                    if (e.target.scrollTop !== initialScrollTop) {
+                        e.target.scrollTop = initialScrollTop;
+                    }
+                });
             });
         }
 
@@ -1963,7 +1981,7 @@
         } else {
             // 从Markdown编辑器获取数据
             title = document.getElementById('editDigestTitleInput').value;
-            content = simplemde ? simplemde.value() : '';
+            content = easymde ? easymde.value() : '';
         }
 
         if (!title) {
@@ -2996,23 +3014,78 @@
         });
     }
 
-    // 移动端：摘要文本域自动增高
+    // 移动端：摘要文本域自动增高（优化版：保存和恢复光标位置）
     function autoResizeTextareaMobile(textarea) {
         try {
             // 仅在移动端执行
             if (window.innerWidth > 768) return;
-            textarea.style.height = 'auto';
-            textarea.style.overflow = 'hidden';
-            textarea.style.boxSizing = 'border-box';
-            // 基于内容的高度，设置上限防止极端内容导致过高
-            const minH = 120;
-            const maxH = 1600;
-            const next = Math.min(Math.max(textarea.scrollHeight, minH), maxH);
-            textarea.style.height = next + 'px';
-        } catch (e) {}
+
+            // 1. 保存光标位置和滚动位置
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const scrollTop = textarea.scrollTop;
+
+            // 2. 使用 requestAnimationFrame 进行高度调整，避免重排冲突
+            requestAnimationFrame(() => {
+                const currentHeight = textarea.offsetHeight;
+                const scrollHeight = textarea.scrollHeight;
+
+                // 只在需要时才调整（避免不必要的重排）
+                if (scrollHeight > currentHeight || scrollHeight < currentHeight - 10) {
+                    textarea.style.overflow = 'hidden';
+                    textarea.style.boxSizing = 'border-box';
+
+                    // 基于内容的高度，设置上限防止极端内容导致过高
+                    const minH = 120;
+                    const maxH = 1600;
+                    const newHeight = Math.min(Math.max(scrollHeight, minH), maxH);
+                    textarea.style.height = newHeight + 'px';
+
+                    // 3. 恢复光标和滚动位置
+                    requestAnimationFrame(() => {
+                        // 确保元素仍然存在且聚焦
+                        if (document.activeElement === textarea) {
+                            try {
+                                textarea.setSelectionRange(start, end);
+                                textarea.scrollTop = scrollTop;
+                            } catch (e) {
+                                // 某些情况下 setSelectionRange 可能失败，忽略错误
+                            }
+                        }
+                    });
+                }
+            });
+        } catch (e) {
+            console.warn('autoResizeTextareaMobile error:', e);
+        }
     }
 
     function handleMobileAutoResizeInput(e) {
+        autoResizeTextareaMobile(e.currentTarget);
+    }
+
+    // IME 输入法状态管理（用于中文、日文等输入法）
+    const imeComposingMap = new WeakMap();
+
+    function handleCompositionStart(e) {
+        // 标记当前元素正在进行输入法输入
+        imeComposingMap.set(e.target, true);
+    }
+
+    function handleCompositionEnd(e) {
+        // 输入法输入结束，移除标记
+        imeComposingMap.set(e.target, false);
+        // 输入法结束后执行一次高度调整
+        if (window.innerWidth <= 768) {
+            autoResizeTextareaMobile(e.target);
+        }
+    }
+
+    function handleMobileAutoResizeInputWithIME(e) {
+        // 如果正在进行输入法输入，跳过高度调整
+        if (imeComposingMap.get(e.currentTarget)) {
+            return;
+        }
         autoResizeTextareaMobile(e.currentTarget);
     }
 
@@ -3021,7 +3094,11 @@
         document.querySelectorAll('.news-summary-input').forEach(el => {
             autoResizeTextareaMobile(el);
             if (!el.dataset.autoResizeBound) {
-                el.addEventListener('input', handleMobileAutoResizeInput, false);
+                // 使用带 IME 保护的输入处理函数
+                el.addEventListener('input', handleMobileAutoResizeInputWithIME, false);
+                // 添加 IME composition 事件监听
+                el.addEventListener('compositionstart', handleCompositionStart, false);
+                el.addEventListener('compositionend', handleCompositionEnd, false);
                 el.dataset.autoResizeBound = '1';
             }
         });
