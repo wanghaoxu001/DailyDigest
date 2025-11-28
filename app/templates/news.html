@@ -29,7 +29,7 @@
         <p class="text-muted mb-0" id="newsStatsInfo">正在加载新闻统计信息...</p>
     </div>
     <div>
-        <button class="btn btn-outline-info btn-sm me-2" data-bs-toggle="tooltip" data-bs-placement="bottom" title="开启事件分组后，系统会自动将描述同一事件的新闻归类在一起，帮助您快速识别重复内容，节省阅读时间">
+        <button class="btn btn-outline-info btn-sm me-2" data-bs-toggle="tooltip" data-bs-placement="bottom" title="系统提供多种筛选和显示选项，帮助您快速找到需要的新闻内容">
             <i class="bi bi-info-circle"></i> 功能说明
         </button>
         <button class="btn btn-primary" id="btnGenerateDigest" disabled>
@@ -125,14 +125,6 @@
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="excludeUsed">
                                 <label class="form-check-label" for="excludeUsed">排除已用于快报</label>
-                            </div>
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="groupByEvent">
-                                <label class="form-check-label" for="groupByEvent">按事件分组</label>
-                            </div>
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="separateHistory">
-                                <label class="form-check-label" for="separateHistory">分离历史相似</label>
                             </div>
                         </div>
                     </div>
@@ -257,5 +249,5 @@
 <!-- HTML净化库 - 防止XSS攻击 -->
 <script src="https://cdn.jsdelivr.net/npm/dompurify@2.3.10/dist/purify.min.js" defer></script>
 <!-- 新闻页面专用脚本 -->
-<script src="{{ url_for('static', path='/js/news.js') }}" defer></script>
+<script src="{{ url_for('static', path='/js/news.js') }}?v=20251030b" defer></script>
 {% endblock %}

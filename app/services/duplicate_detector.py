@@ -19,10 +19,77 @@ from app.models.news import News
 from app.models.digest import Digest
 from app.models.duplicate_detection import DuplicateDetectionResult, DuplicateDetectionStatus
 from app.services import llm_processor
-from app.services.news_similarity import similarity_service
 from app.config import get_logger
 
 logger = get_logger(__name__)
+
+
+# 简化的文本相似度计算（替代原similarity_service）
+# 停用词列表（中英文常见停用词）
+STOPWORDS = {
+    # 中文停用词
+    '的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一', '一个',
+    '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有', '看', '好',
+    '自己', '这', '那', '里', '他', '她', '它', '们', '把', '被', '为', '从', '以',
+    '将', '与', '及', '等', '对', '于', '但', '而', '或', '且', '又', '如', '因',
+    '所', '由', '可', '能', '已', '还', '更', '其', '此', '该', '些', '只', '并',
+    # 英文停用词
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+    'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be', 'been', 'being', 'have', 'has',
+    'had', 'do', 'does', 'did', 'will', 'would', 'should', 'could', 'may', 'might', 'must',
+    'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they'
+}
+
+def calculate_simple_text_similarity(text1: str, text2: str) -> float:
+    """计算文本相似度（基于词汇重叠）- 支持中文分词"""
+    if not text1 or not text2:
+        return 0.0
+
+    try:
+        import jieba
+        # 使用jieba进行中文分词（而非简单的split）
+        words1 = set(jieba.cut(text1.lower()))
+        words2 = set(jieba.cut(text2.lower()))
+
+        # 过滤停用词和空字符串
+        words1 = {w for w in words1 if w.strip() and w not in STOPWORDS}
+        words2 = {w for w in words2 if w.strip() and w not in STOPWORDS}
+
+        if not words1 or not words2:
+            return 0.0
+
+        intersection = words1 & words2
+        union = words1 | words2
+
+        return len(intersection) / len(union) if union else 0.0
+
+    except Exception as e:
+        logger.warning(f"jieba分词失败，回退到split方法: {e}")
+        # 降级策略：如果jieba失败，回退到原来的split方法
+        words1 = set(text1.lower().split())
+        words2 = set(text2.lower().split())
+        if not words1 or not words2:
+            return 0.0
+        intersection = words1 & words2
+        union = words1 | words2
+        return len(intersection) / len(union) if union else 0.0
+
+
+def extract_simple_entities(news: News) -> Dict:
+    """提取简单的实体信息（基于关键词）"""
+    text = f"{news.title} {news.summary or ''}"
+    entities = {
+        'CVE': [],
+        '组织': [],
+        '产品': []
+    }
+
+    # 简单的CVE提取
+    import re
+    cve_pattern = r'CVE-\d{4}-\d{4,7}'
+    entities['CVE'] = list(set(re.findall(cve_pattern, text, re.IGNORECASE)))
+
+    return entities
 
 
 class DuplicateDetectorService:
@@ -125,8 +192,8 @@ class DuplicateDetectorService:
             
             # ============ 第二步：实体辅助判断 ============
             # 提取关键实体用于辅助判断
-            entities1 = similarity_service.extract_key_entities(current_news)
-            entities2 = similarity_service.extract_key_entities(reference_news)
+            entities1 = extract_simple_entities(current_news)
+            entities2 = extract_simple_entities(reference_news)
             
             # 检查关键实体类型（攻击者、受害者、组织等）
             critical_entity_types = ['攻击者', '受害者', '组织', '攻击组织', '黑客组织', '漏洞编号']
@@ -144,14 +211,14 @@ class DuplicateDetectorService:
             # 计算标题相似度
             title1 = current_news.generated_title or current_news.title
             title2 = reference_news.generated_title or reference_news.title
-            title_sim = similarity_service.calculate_text_similarity(title1, title2)
+            title_sim = calculate_simple_text_similarity(title1, title2)
             
             # 计算摘要相似度
             summary1 = current_news.generated_summary or current_news.summary or ''
             summary2 = reference_news.generated_summary or reference_news.summary or ''
             summary_sim = 0.0
             if summary1 and summary2:
-                summary_sim = similarity_service.calculate_text_similarity(summary1[:200], summary2[:200])
+                summary_sim = calculate_simple_text_similarity(summary1[:200], summary2[:200])
             
             # 混合策略：标题权重70%，摘要权重30%
             # 标题更能代表事件核心，权重更高

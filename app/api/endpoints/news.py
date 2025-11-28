@@ -10,7 +10,6 @@ import pytz
 from app.db.session import get_db
 from app.models.news import News, NewsCategory
 from app.services.llm_processor import process_news
-from app.services.news_similarity import similarity_service
 from app.config import get_logger
 
 router = APIRouter()
@@ -86,12 +85,6 @@ class GroupedNewsListResponse(BaseModel):
     total_groups: int
     total_news: int
     groups: List[NewsGroupResponse]
-
-
-class SeparatedNewsResponse(BaseModel):
-    """分离的新闻响应 - 今日新文章和与历史相似的文章"""
-    fresh_news: NewsListResponse
-    similar_to_history: NewsListResponse
 
 
 # 辅助函数 - 将ORM模型转换为字典
@@ -231,23 +224,9 @@ def get_news_list(
     # 默认按创建时间倒序排序
     query = query.order_by(News.created_at.desc())
 
-    # 根据是否启用相似度过滤来决定处理方式
-    if enable_similarity_filter:
-        # 获取所有符合条件的新闻（不先分页）
-        all_items = query.all()
-        
-        # 过滤掉与已用于快报的新闻相似的文章（同一天的除外）
-        filtered_items = similarity_service.filter_similar_to_used_news(all_items, db)
-        
-        # 重新计算总数
-        total = len(filtered_items)
-        
-        # 应用分页
-        paginated_items = filtered_items[skip:skip + limit]
-    else:
-        # 不进行相似度过滤，直接分页查询，性能更好
-        total = query.count()
-        paginated_items = query.offset(skip).limit(limit).all()
+    # 不进行相似度过滤，直接分页查询
+    total = query.count()
+    paginated_items = query.offset(skip).limit(limit).all()
 
     # 手动转换ORM对象到字典
     news_dicts = [news_to_dict(news, db) for news in paginated_items]
@@ -390,127 +369,6 @@ def get_recent_news(
     news_dicts = [news_to_dict(news, db) for news in paginated_items]
 
     return {"total": total, "items": news_dicts}
-
-
-@router.get("/recent/separated", response_model=SeparatedNewsResponse)
-def get_recent_news_separated(
-    hours: int = 24,
-    skip: Optional[int] = Query(0, description="Skip N items for pagination"),
-    limit: int = 100,
-    exclude_used: bool = False,
-    source_id: Optional[int] = None,
-    exclude_source_id: Optional[List[int]] = Query(None, description="Source IDs to exclude"),
-    category: Optional[List[str]] = Query(None, description="Category filters, can specify multiple"),
-    since_yesterday_digest: bool = Query(False, description="使用昨天最后一次快报时间作为开始时间"),
-    db: Session = Depends(get_db),
-):
-    """获取最近一段时间的新闻，分离显示：今日新文章 vs 与历史快报相似的文章"""
-    # 确保skip是有效整数
-    try:
-        skip = max(0, int(skip))
-    except (ValueError, TypeError):
-        skip = 0
-
-    # 获取北京时间的当前时间
-    current_time = datetime.now(BEIJING_TZ)
-    
-    # 根据参数决定开始时间
-    if since_yesterday_digest:
-        # 获取昨天最后一次快报的时间
-        from app.models.digest import Digest
-        from datetime import time
-        
-        # 构建昨天的日期范围（北京时间）
-        today = current_time.date()
-        yesterday_start_beijing = BEIJING_TZ.localize(datetime.combine(today - timedelta(days=1), time.min))
-        yesterday_end_beijing = BEIJING_TZ.localize(datetime.combine(today, time.min))
-        
-        # 转换为UTC时间进行数据库查询（因为数据库存储的是UTC时间）
-        yesterday_start_utc = yesterday_start_beijing.astimezone(pytz.UTC).replace(tzinfo=None)
-        yesterday_end_utc = yesterday_end_beijing.astimezone(pytz.UTC).replace(tzinfo=None)
-        
-        # 查询昨天创建的最后一个快报
-        last_digest = (
-            db.query(Digest)
-            .filter(Digest.created_at >= yesterday_start_utc)
-            .filter(Digest.created_at < yesterday_end_utc)
-            .order_by(Digest.created_at.desc())
-            .first()
-        )
-        
-        if last_digest:
-            start_time = last_digest.created_at
-        else:
-            # 如果昨天没有快报，使用昨天开始时间（UTC）
-            start_time = yesterday_start_utc
-    else:
-        # 对于普通时间范围查询，需要转换为UTC时间与数据库比较
-        start_time_beijing = current_time - timedelta(hours=hours)
-        start_time = start_time_beijing.astimezone(pytz.UTC).replace(tzinfo=None)
-
-    query = db.query(News).filter(News.created_at >= start_time)
-
-    if exclude_used:
-        query = query.filter(News.is_used_in_digest == False)
-
-    # 应用筛选条件
-    if source_id:
-        query = query.filter(News.source_id == source_id)
-
-    # 排除指定的来源
-    if exclude_source_id:
-        query = query.filter(~News.source_id.in_(exclude_source_id))
-
-    if category:
-        # 处理多个分类筛选
-        try:
-            # 查找匹配的枚举值列表
-            category_enums = []
-            for cat_str in category:
-                for enum_item in NewsCategory:
-                    if enum_item.value == cat_str:
-                        category_enums.append(enum_item)
-                        break
-
-            if category_enums:
-                # 使用IN操作符筛选多个分类
-                query = query.filter(News.category.in_(category_enums))
-            else:
-                # 如果没有找到任何匹配的枚举值，返回空结果
-                query = query.filter(News.id == -1)  # 不存在的ID，确保返回空结果
-        except Exception as e:
-            # 如果转换失败，返回空结果
-            query = query.filter(News.id == -1)
-
-    # 默认按创建时间倒序排序
-    query = query.order_by(News.created_at.desc())
-
-    # 获取所有符合条件的新闻
-    all_items = query.all()
-
-    # 简化逻辑：所有新闻都作为"新文章"返回，不再进行相似度分离
-    fresh_news = all_items
-    similar_to_history = []
-
-    # 应用分页到新文章
-    fresh_total = len(fresh_news)
-    fresh_paginated = fresh_news[skip:skip + limit]
-    fresh_dicts = [news_to_dict(news, db) for news in fresh_paginated]
-
-    # 相似历史的文章列表为空
-    similar_total = 0
-    similar_dicts = []
-
-    return {
-        "fresh_news": {
-            "total": fresh_total,
-            "items": fresh_dicts
-        },
-        "similar_to_history": {
-            "total": similar_total,
-            "items": similar_dicts
-        }
-    }
 
 
 @router.get("/today/count")

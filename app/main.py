@@ -123,28 +123,21 @@ async def lifespan(app: FastAPI):
     update_sources_table()
     run_migrations()
 
-    # 初始化并启动APScheduler调度器
-    try:
-        from app.services.task_scheduler import init_scheduler, start_scheduler
-        init_scheduler()
-        start_scheduler()
-        logger.info("✓ APScheduler 调度器已启动")
-    except Exception as e:
-        logger.error(f"启动APScheduler调度器失败: {e}", exc_info=True)
-
-    # ✨ 系统Cron已移除 - 所有任务现在由APScheduler管理
-    # 注释原因：第二阶段重构完成，所有任务已迁移到APScheduler
-    # 如需恢复系统cron作为备份，取消下面注释：
+    # ✨ APScheduler已禁用 - 使用系统Cron进行任务调度
+    # 注释原因：决定使用传统的系统cron，更稳定可靠
+    # 如需恢复APScheduler，取消下面注释：
     #
     # try:
-    #     from app.services.cron_manager import cron_manager
-    #     result = cron_manager.reload_crontab()
-    #     if result['status'] == 'success':
-    #         logger.info("✓ 系统Cron配置已加载并安装（备份机制）")
-    #     else:
-    #         logger.warning(f"⚠ 系统Cron配置加载失败: {result['message']}")
+    #     from app.services.task_scheduler import init_scheduler, start_scheduler
+    #     init_scheduler()
+    #     start_scheduler()
+    #     logger.info("✓ APScheduler 调度器已启动")
     # except Exception as e:
-    #     logger.error(f"加载系统cron配置时出错: {e}")
+    #     logger.error(f"启动APScheduler调度器失败: {e}", exc_info=True)
+
+    # 系统Cron配置由 docker-entrypoint.sh 在容器启动时加载
+    # 无需在应用启动时重新加载
+    logger.info("✓ 使用系统Cron进行任务调度（APScheduler已禁用）")
 
     logger.info("应用启动完成")
 
@@ -153,13 +146,8 @@ async def lifespan(app: FastAPI):
     # 关闭时执行
     logger.info("应用正在关闭")
 
-    # 关闭APScheduler调度器
-    try:
-        from app.services.task_scheduler import shutdown_scheduler
-        shutdown_scheduler(wait=True)
-        logger.info("✓ APScheduler 调度器已关闭")
-    except Exception as e:
-        logger.error(f"关闭APScheduler调度器失败: {e}", exc_info=True)
+    # APScheduler已禁用，无需关闭
+    # 系统Cron由容器管理，应用关闭时不影响cron服务
 
 
 # 创建应用

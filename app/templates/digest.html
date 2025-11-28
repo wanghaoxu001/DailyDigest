@@ -1261,15 +1261,15 @@
                     downloadOrGeneratePdf(digestId);
                 };
 
-                // 显示模态框
-                const modal = new bootstrap.Modal(document.getElementById('viewDigestModal'));
+                // 显示模态框 - 使用 getOrCreateInstance 避免创建多个实例导致 backdrop 残留
+                const modalElement = document.getElementById('viewDigestModal');
+                const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
                 modal.show();
 
                 // 启动重复检测状态更新
                 startDuplicateDetectionUpdates(digestId, document.getElementById('viewDigestContent'));
 
                 // 监听模态框关闭事件，停止状态更新
-                const modalElement = document.getElementById('viewDigestModal');
                 modalElement.addEventListener('hidden.bs.modal', () => {
                     const previewElement = document.getElementById('latestDigestPreview');
                     const previewDigestId = previewElement ? parseInt(previewElement.getAttribute('data-digest-id') || '0', 10) : null;
@@ -1287,9 +1287,39 @@
             });
     }
 
+    // 存储模态框shown事件处理器，以便清理
+    let modalShownHandler = null;
+    let titleInputHandler = null;
+    let visualTitleInputHandler = null;
+
+    // 清理模态框事件监听器
+    function cleanupModalEventListeners() {
+        const modal = document.getElementById('editDigestModal');
+        const titleInput = document.getElementById('editDigestTitleInput');
+        const visualTitle = document.getElementById('visualDigestTitle');
+
+        if (modal && modalShownHandler) {
+            modal.removeEventListener('shown.bs.modal', modalShownHandler);
+            modalShownHandler = null;
+        }
+
+        if (titleInput && titleInputHandler) {
+            titleInput.removeEventListener('input', titleInputHandler);
+            titleInputHandler = null;
+        }
+
+        if (visualTitle && visualTitleInputHandler) {
+            visualTitle.removeEventListener('input', visualTitleInputHandler);
+            visualTitleInputHandler = null;
+        }
+    }
+
     // 编辑快报
     function editDigest(digestId) {
         currentDigestId = digestId;
+
+        // 清理之前的事件监听器
+        cleanupModalEventListeners();
 
         axios.get(`/api/digest/${digestId}`)
             .then(response => {
@@ -1342,41 +1372,44 @@
 
                 // 初始化可视化编辑器数据
                 visualEditorData = parseMarkdownToVisualData(digest.content || '');
-                
+
                 // 同步标题到可视化编辑器并立即更新显示
                 document.getElementById('visualDigestTitle').value = digest.title;
                 updateVisualEditor(digest.title, visualEditorData);
 
-                // 监听标题变化
-                document.getElementById('editDigestTitleInput').addEventListener('input', updatePreview);
-                
+                // 监听标题变化（保存引用以便清理）
+                titleInputHandler = updatePreview;
+                document.getElementById('editDigestTitleInput').addEventListener('input', titleInputHandler);
+
                 // 监听可视化编辑器标题变化
-                document.getElementById('visualDigestTitle').addEventListener('input', function() {
+                visualTitleInputHandler = function() {
                     // 同步标题到Markdown编辑器
                     document.getElementById('editDigestTitleInput').value = this.value;
-                });
+                };
+                document.getElementById('visualDigestTitle').addEventListener('input', visualTitleInputHandler);
 
-                // 显示模态框
-                const modal = new bootstrap.Modal(document.getElementById('editDigestModal'));
+                // 显示模态框 - 使用 getOrCreateInstance 避免创建多个实例导致 backdrop 残留
+                const modalElement = document.getElementById('editDigestModal');
+                const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
                 modal.show();
 
-                // 在模态框完全显示后刷新编辑器
-                document.getElementById('editDigestModal').addEventListener('shown.bs.modal', function() {
+                // 在模态框完全显示后刷新编辑器（保存引用以便清理）
+                modalShownHandler = function() {
                     // 确保移动设备上默认显示编辑器
                     if (window.innerWidth <= 768) {
                         const editorSection = document.getElementById('editorSection');
                         const previewSection = document.getElementById('previewSection');
                         const btnShowEditor = document.getElementById('btnShowEditor');
                         const btnShowPreview = document.getElementById('btnShowPreview');
-                        
+
                         // 重置为编辑模式
                         editorSection.classList.remove('mobile-hidden');
                         previewSection.classList.remove('mobile-visible');
-                        
+
                         btnShowEditor.classList.add('active');
                         btnShowEditor.classList.remove('btn-outline-primary');
                         btnShowEditor.classList.add('btn-primary');
-                        
+
                         btnShowPreview.classList.remove('active');
                         btnShowPreview.classList.remove('btn-secondary');
                         btnShowPreview.classList.add('btn-outline-secondary');
@@ -1384,7 +1417,7 @@
                         // 移动端：模态展示后，统一自适应所有摘要高度
                         bindAutoResizeForAllSummariesMobile();
                     }
-                    
+
                     if (easymde && easymde.codemirror) {
                         // 延迟一下确保DOM完全渲染
                         setTimeout(() => {
@@ -1396,9 +1429,13 @@
                             }
                         }, 100);
                     }
-                }, {
-                    once: true
-                });
+                };
+                document.getElementById('editDigestModal').addEventListener('shown.bs.modal', modalShownHandler, { once: true });
+
+                // 模态框关闭时清理事件监听器
+                document.getElementById('editDigestModal').addEventListener('hidden.bs.modal', function() {
+                    cleanupModalEventListeners();
+                }, { once: true });
             })
             .catch(error => {
                 console.error('Error loading digest for editing:', error);
@@ -1655,15 +1692,25 @@
         }
     }
 
-    // 输入自适应高度的防抖
+    // 输入自适应高度的防抖（优化版：增加节流机制）
     let resizeTimeout;
+    let lastResizeTime = 0;
+    const RESIZE_THROTTLE_MS = 100; // 节流间隔
+
     const debouncedResize = (textarea) => {
         clearTimeout(resizeTimeout);
+
+        // 节流检查：如果距离上次调整太近，延长防抖时间
+        const now = Date.now();
+        const timeSinceLastResize = now - lastResizeTime;
+        const debounceDelay = timeSinceLastResize < RESIZE_THROTTLE_MS ? 150 : 50;
+
         resizeTimeout = setTimeout(() => {
             if (typeof autoResizeTextareaMobile === 'function') {
                 autoResizeTextareaMobile(textarea);
+                lastResizeTime = Date.now();
             }
-        }, 50);
+        }, debounceDelay);
     };
 
     // 创建新闻项
@@ -1703,18 +1750,21 @@
         `;
 
         container.appendChild(newsDiv);
-        
-        // 绑定分类变更事件
+
+        // 绑定分类变更事件（使用标记防止重复绑定）
         const categorySelect = newsDiv.querySelector('.news-category-select');
-        categorySelect.addEventListener('change', function() {
-            const newCategoryKey = this.value;
-            const currentCategoryKey = newsDiv.dataset.category;
-            
-            if (newCategoryKey !== currentCategoryKey) {
-                moveNewsToCategory(newsDiv, currentCategoryKey, newCategoryKey);
-            }
-        });
-        
+        if (categorySelect && !categorySelect.dataset.eventBound) {
+            categorySelect.addEventListener('change', function() {
+                const newCategoryKey = this.value;
+                const currentCategoryKey = newsDiv.dataset.category;
+
+                if (newCategoryKey !== currentCategoryKey) {
+                    moveNewsToCategory(newsDiv, currentCategoryKey, newCategoryKey);
+                }
+            });
+            categorySelect.dataset.eventBound = 'true';
+        }
+
         // 移动端：初始化摘要高度并绑定输入自适应（加入 IME 保护与焦点滚动锁定）
         const summaryEl = newsDiv.querySelector('.news-summary-input');
         if (summaryEl && window.innerWidth <= 768) {
@@ -1723,31 +1773,35 @@
                 autoResizeTextareaMobile(summaryEl);
             }
 
-            // 绑定输入事件（带 IME 保护）
-            summaryEl.addEventListener('input', function(e) {
-                // 如果正在进行输入法输入，跳过高度调整
-                if (imeComposingMap.get(e.target)) {
-                    return;
-                }
-                debouncedResize(summaryEl);
-            });
-
-            // 添加 IME composition 事件监听
-            summaryEl.addEventListener('compositionstart', handleCompositionStart);
-            summaryEl.addEventListener('compositionend', handleCompositionEnd);
-
-            // 改进的焦点滚动锁定
-            summaryEl.addEventListener('focus', function(e) {
-                // 使用 preventScroll 选项（如果浏览器支持）
-                const initialScrollTop = e.target.scrollTop;
-
-                // 使用 RAF 确保稳定
-                requestAnimationFrame(() => {
-                    if (e.target.scrollTop !== initialScrollTop) {
-                        e.target.scrollTop = initialScrollTop;
+            // 绑定输入事件（使用标记防止重复绑定）
+            if (!summaryEl.dataset.eventBound) {
+                summaryEl.addEventListener('input', function(e) {
+                    // 如果正在进行输入法输入，跳过高度调整
+                    if (imeComposingMap.get(e.target)) {
+                        return;
                     }
+                    debouncedResize(summaryEl);
                 });
-            });
+
+                // 添加 IME composition 事件监听
+                summaryEl.addEventListener('compositionstart', handleCompositionStart);
+                summaryEl.addEventListener('compositionend', handleCompositionEnd);
+
+                // 改进的焦点滚动锁定
+                summaryEl.addEventListener('focus', function(e) {
+                    // 使用 preventScroll 选项（如果浏览器支持）
+                    const initialScrollTop = e.target.scrollTop;
+
+                    // 使用 RAF 确保稳定
+                    requestAnimationFrame(() => {
+                        if (e.target.scrollTop !== initialScrollTop) {
+                            e.target.scrollTop = initialScrollTop;
+                        }
+                    });
+                });
+
+                summaryEl.dataset.eventBound = 'true';
+            }
         }
 
         return newsDiv;
@@ -1764,39 +1818,55 @@
         });
     }
 
-    // 全局新闻操作按钮事件处理（避免重复绑定）
-    document.addEventListener('click', function(e) {
-        if (e.target.closest('.news-action-btn')) {
-            const btn = e.target.closest('.news-action-btn');
-            const newsItem = btn.closest('.news-item');
-            
-            if (btn.classList.contains('delete')) {
-                deleteNewsItem(newsItem);
-            } else if (btn.classList.contains('move-up')) {
-                moveNewsItem(newsItem, 'up');
-            } else if (btn.classList.contains('move-down')) {
-                moveNewsItem(newsItem, 'down');
-            }
-        }
-    });
+    // 全局事件处理标记，防止重复绑定
+    let globalEventsInitialized = false;
 
-    // 全局事件处理（延迟绑定）
-    document.addEventListener('click', function(e) {
-        if (e.target && e.target.id === 'btnAddCategory') {
-            const categoryName = prompt('请输入自定义分类名称：');
-            if (categoryName && categoryName.trim()) {
-                addCustomCategory(categoryName.trim());
+    function initGlobalEventHandlers() {
+        if (globalEventsInitialized) {
+            console.log('全局事件处理器已初始化，跳过重复绑定');
+            return;
+        }
+
+        // 全局新闻操作按钮事件处理（使用事件委托，只绑定一次）
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.news-action-btn')) {
+                const btn = e.target.closest('.news-action-btn');
+                const newsItem = btn.closest('.news-item');
+
+                if (btn.classList.contains('delete')) {
+                    deleteNewsItem(newsItem);
+                } else if (btn.classList.contains('move-up')) {
+                    moveNewsItem(newsItem, 'up');
+                } else if (btn.classList.contains('move-down')) {
+                    moveNewsItem(newsItem, 'down');
+                }
             }
-        }
-        
-        if (e.target && e.target.id === 'btnGlobalAddNews') {
-            showAddNewsModal();
-        }
-        
-        if (e.target && e.target.id === 'btnConfirmAddNews') {
-            confirmAddNews();
-        }
-    });
+        });
+
+        // 全局事件处理（延迟绑定）
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.id === 'btnAddCategory') {
+                const categoryName = prompt('请输入自定义分类名称：');
+                if (categoryName && categoryName.trim()) {
+                    addCustomCategory(categoryName.trim());
+                }
+            }
+
+            if (e.target && e.target.id === 'btnGlobalAddNews') {
+                showAddNewsModal();
+            }
+
+            if (e.target && e.target.id === 'btnConfirmAddNews') {
+                confirmAddNews();
+            }
+        });
+
+        globalEventsInitialized = true;
+        console.log('全局事件处理器初始化完成');
+    }
+
+    // 在DOMContentLoaded中调用
+    initGlobalEventHandlers();
 
     // 添加新闻项
     function addNewsItem(categoryKey) {
@@ -1900,9 +1970,10 @@
     function showAddNewsModal() {
         // 清空表单
         document.getElementById('addNewsForm').reset();
-        
-        // 显示模态框
-        const modal = new bootstrap.Modal(document.getElementById('addNewsModal'));
+
+        // 显示模态框 - 使用 getOrCreateInstance 避免创建多个实例导致 backdrop 残留
+        const modalElement = document.getElementById('addNewsModal');
+        const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
         modal.show();
     }
 
@@ -1994,8 +2065,23 @@
             content: content
         };
 
+        // 禁用保存按钮，防止重复点击
+        const saveBtn = document.getElementById('btnSaveDigest');
+        const originalText = saveBtn.textContent;
+        saveBtn.disabled = true;
+        saveBtn.textContent = '保存中...';
+
         axios.put(`/api/digest/${digestId}`, digestData)
             .then(() => {
+                // 清理事件监听器
+                cleanupModalEventListeners();
+
+                // 清理定时器
+                if (resizeTimeout) {
+                    clearTimeout(resizeTimeout);
+                    resizeTimeout = null;
+                }
+
                 // 关闭模态框
                 const modal = bootstrap.Modal.getInstance(document.getElementById('editDigestModal'));
                 modal.hide();
@@ -2013,6 +2099,11 @@
             .catch(error => {
                 console.error('Error saving digest:', error);
                 alert('保存快报失败');
+            })
+            .finally(() => {
+                // 恢复保存按钮状态
+                saveBtn.disabled = false;
+                saveBtn.textContent = originalText;
             });
     }
 
@@ -2292,9 +2383,10 @@
                         </div>
                     </div>
                 `;
-                
-                // 显示模态框
-                const modal = new bootstrap.Modal(document.getElementById('newsDetailModal'));
+
+                // 显示模态框 - 使用 getOrCreateInstance 避免创建多个实例导致 backdrop 残留
+                const modalElement = document.getElementById('newsDetailModal');
+                const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
                 modal.show();
             })
             .catch(error => {
@@ -3014,7 +3106,7 @@
         });
     }
 
-    // 移动端：摘要文本域自动增高（优化版：保存和恢复光标位置）
+    // 移动端：摘要文本域自动增高（优化版：简化RAF嵌套，改善性能）
     function autoResizeTextareaMobile(textarea) {
         try {
             // 仅在移动端执行
@@ -3025,13 +3117,13 @@
             const end = textarea.selectionEnd;
             const scrollTop = textarea.scrollTop;
 
-            // 2. 使用 requestAnimationFrame 进行高度调整，避免重排冲突
+            // 2. 使用单层 requestAnimationFrame 进行高度调整
             requestAnimationFrame(() => {
                 const currentHeight = textarea.offsetHeight;
                 const scrollHeight = textarea.scrollHeight;
 
                 // 只在需要时才调整（避免不必要的重排）
-                if (scrollHeight > currentHeight || scrollHeight < currentHeight - 10) {
+                if (Math.abs(scrollHeight - currentHeight) > 5) {
                     textarea.style.overflow = 'hidden';
                     textarea.style.boxSizing = 'border-box';
 
@@ -3040,17 +3132,16 @@
                     const maxH = 1600;
                     const newHeight = Math.min(Math.max(scrollHeight, minH), maxH);
                     textarea.style.height = newHeight + 'px';
+                }
 
-                    // 3. 恢复光标和滚动位置
-                    requestAnimationFrame(() => {
-                        // 确保元素仍然存在且聚焦
-                        if (document.activeElement === textarea) {
-                            try {
-                                textarea.setSelectionRange(start, end);
-                                textarea.scrollTop = scrollTop;
-                            } catch (e) {
-                                // 某些情况下 setSelectionRange 可能失败，忽略错误
-                            }
+                // 3. 恢复光标和滚动位置（使用微任务延迟，避免RAF嵌套）
+                if (document.activeElement === textarea) {
+                    Promise.resolve().then(() => {
+                        try {
+                            textarea.setSelectionRange(start, end);
+                            textarea.scrollTop = scrollTop;
+                        } catch (e) {
+                            // 某些情况下 setSelectionRange 可能失败，忽略错误
                         }
                     });
                 }
@@ -3093,13 +3184,14 @@
         if (window.innerWidth > 768) return;
         document.querySelectorAll('.news-summary-input').forEach(el => {
             autoResizeTextareaMobile(el);
+            // 使用标记防止重复绑定
             if (!el.dataset.autoResizeBound) {
                 // 使用带 IME 保护的输入处理函数
                 el.addEventListener('input', handleMobileAutoResizeInputWithIME, false);
                 // 添加 IME composition 事件监听
                 el.addEventListener('compositionstart', handleCompositionStart, false);
                 el.addEventListener('compositionend', handleCompositionEnd, false);
-                el.dataset.autoResizeBound = '1';
+                el.dataset.autoResizeBound = 'true';
             }
         });
     }

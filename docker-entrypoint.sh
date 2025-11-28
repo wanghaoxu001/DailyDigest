@@ -25,6 +25,21 @@ else
     echo "⚠ Warning: install_crontab.py not found"
 fi
 
+echo "✓ 使用系统 Cron 进行任务调度"
+
+# 启动 Cron Watchdog 监控（后台运行）
+echo "Starting Cron Watchdog monitor..."
+if [ -f /app/scripts/cron_watchdog.sh ]; then
+    nohup /app/scripts/cron_watchdog.sh > /dev/null 2>&1 &
+    WATCHDOG_PID=$!
+    echo "✓ Cron Watchdog started (PID: $WATCHDOG_PID)"
+    echo $WATCHDOG_PID > /var/run/cron_watchdog.pid
+    echo "  - 监控间隔: 5分钟"
+    echo "  - 日志位置: /app/logs/cron_watchdog.log"
+else
+    echo "⚠ Warning: cron_watchdog.sh not found, cron monitoring disabled"
+fi
+
 echo "=========================================="
 echo "Starting FastAPI Application"
 echo "=========================================="

@@ -10,7 +10,6 @@ from app.db.session import engine
 from app.models.source import Source
 from app.models.news import News
 from app.models.digest import Digest
-from app.models.event_group import EventGroup
 
 def init_db():
     # 创建所有表

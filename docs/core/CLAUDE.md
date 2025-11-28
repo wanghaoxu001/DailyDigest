@@ -95,8 +95,7 @@ docker compose --profile dev exec daily-digest-dev bash  # development
 - `News` - Individual news articles with metadata and processing status
 - `Digest` - Generated daily security digests
 - `Source` - News source configuration (RSS feeds, websites, WeChat accounts)
-- `EventGroup` - Grouped related news events
-- `NewsSimilarity` - Semantic similarity relationships between articles
+- `DuplicateDetectionResult` - Duplicate detection results for digest generation
 
 ### Technology Stack
 - **Backend**: FastAPI + SQLAlchemy + SQLite
@@ -183,11 +182,9 @@ app/
 │   ├── news_duplicate_detector.py    # Semantic + LLM deduplication (Lines: ~400)
 │   ├── digest_generator.py           # Markdown/PDF digest creation (Lines: ~500)
 │   ├── playwright_pdf_generator.py   # PDF export via Playwright (Lines: ~350)
-│   ├── news_similarity.py            # Semantic similarity calculation (Lines: ~450)
 │   ├── duplicate_detector.py         # LLM-based duplicate verification (Lines: ~300)
 │   ├── cron_manager.py               # System cron management (Lines: ~200)
-│   ├── task_execution_service.py     # Task tracking service (Lines: ~250)
-│   └── event_group_cache.py          # Event grouping cache (Lines: ~200)
+│   └── task_execution_service.py     # Task tracking service (Lines: ~250)
 │
 ├── crawlers/
 │   ├── wechat/
@@ -202,8 +199,7 @@ app/
 │   ├── news.py            # News article model with AI processing fields
 │   ├── digest.py          # Daily digest with duplicate detection
 │   ├── source.py          # News source configuration
-│   ├── event_group.py     # Event grouping results
-│   ├── news_similarity.py # Similarity relationships
+│   ├── duplicate_detection.py # Duplicate detection results
 │   ├── task_execution.py  # Task execution tracking
 │   └── cron_config.py     # Cron schedule configuration
 │
@@ -244,8 +240,6 @@ scripts/cron_jobs/
 - `POST /api/news/` - Create news record manually
 - `PUT /api/news/{id}` - Update news content/metadata
 - `DELETE /api/news/{id}` - Delete news article
-- `GET /api/news/grouped` - Get news grouped by similarity events
-- `GET /api/news/separated` - Get fresh vs. similar articles separated
 - `GET /api/news/process` - Trigger AI processing for unprocessed news
 - `GET /api/news/{id}/full-content` - Retrieve full article text
 - `POST /api/news/batch-process` - Process multiple articles in batch
@@ -272,7 +266,6 @@ scripts/cron_jobs/
 
 #### Health & Status
 - `GET /health` - Application health check endpoint
-- `GET /api/system/similarity-status` - Similarity calculation progress
 
 ### Data Models Deep Dive
 
@@ -314,7 +307,7 @@ class News:
     # Relationships
     source: Source                   # Many-to-One
     digests: [Digest]                # Many-to-Many
-    similarities: [NewsSimilarity]   # One-to-Many
+    duplicate_detection_results: [DuplicateDetectionResult]  # One-to-Many
 ```
 
 #### Digest Model (Generated Reports)
@@ -369,29 +362,6 @@ class Source:
 
     # Relationships
     news: [News]                     # One-to-Many
-```
-
-#### NewsSimilarity Model (Precomputed Relationships)
-```python
-class NewsSimilarity:
-    id: int
-    news_id_1: int                   # Smaller news ID (ensures uniqueness)
-    news_id_2: int                   # Larger news ID
-
-    # Similarity Scores
-    similarity_score: float          # Combined score (0.0-1.0)
-    entity_similarity: float         # Entity-based similarity
-    text_similarity: float           # Semantic text similarity
-
-    # Grouping
-    group_id: str                    # Event group identifier
-    is_same_event: bool              # Are they part of same event?
-
-    # Indexes for performance
-    __table_args__ = (
-        Index('ix_news_similarity_pair', 'news_id_1', 'news_id_2', unique=True),
-        Index('ix_news_similarity_score', 'similarity_score'),
-    )
 ```
 
 ### Key Service Implementations

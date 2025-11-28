@@ -999,6 +999,25 @@ def fetch_rss_feed(source: Source, db: Session) -> Tuple[int, bool]:
                         entities=article_data.get("entities"),  # type: ignore
                         is_processed=False,  # All new articles start as unprocessed
                     )
+
+                    # 双重检查：在插入前再次检查，防止并发竞态条件
+                    # 对微信文章的多个子条目（URL相同但Title不同）允许插入
+                    double_check_query = db.query(News).filter(
+                        News.original_url == article_data["original_url"]
+                    )
+                    if article_data.get("entities", {}).get("wechat_article"):
+                        # 微信文章：检查 URL + Title 组合
+                        double_check_query = double_check_query.filter(
+                            News.title == article_data["title"]
+                        )
+
+                    double_check_existing = double_check_query.first()
+                    if double_check_existing:
+                        logger.warning(
+                            f"RSS: 双重检查发现文章已存在（可能并发插入）(URL: {article_data['original_url']}, Title: {article_data['title'][:20]}...), 跳过。"
+                        )
+                        continue
+
                     db.add(news)
                     logger.info(
                         f"RSS: 添加新文章到会话: {news.title[:30]}... ({news.original_url})"
@@ -1129,6 +1148,17 @@ def fetch_webpage(source: Source, db: Session) -> Tuple[int, bool]:
                         entities=article_data.get("entities"),  # type: ignore
                         is_processed=False,
                     )
+
+                    # 双重检查：在插入前再次检查，防止并发竞态条件
+                    double_check_existing = (
+                        db.query(News).filter(News.original_url == article_data["original_url"]).first()
+                    )
+                    if double_check_existing:
+                        logger.warning(
+                            f"Webpage: 双重检查发现文章已存在（可能并发插入）(URL: {article_data['original_url']}), 跳过。"
+                        )
+                        continue
+
                     db.add(news)
                     new_count_this_attempt += 1
                     processed_in_batch += 1

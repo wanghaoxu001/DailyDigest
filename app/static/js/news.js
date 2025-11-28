@@ -118,8 +118,6 @@ function bindEvents() {
 
     // 显示选项 - 使用防抖
     document.getElementById('excludeUsed').addEventListener('change', debouncedLoadNews);
-    document.getElementById('groupByEvent').addEventListener('change', debouncedLoadNews);
-    document.getElementById('separateHistory').addEventListener('change', debouncedLoadNews);
 
     // 排除来源
     document.getElementById('excludeSourceSelect').addEventListener('change', function() {
@@ -351,8 +349,6 @@ function loadNews() {
     const excludedSourceIds = Array.from(excludedSources.keys());
     const hours = document.getElementById('timeRange').value;
     const excludeUsed = document.getElementById('excludeUsed').checked;
-    const groupByEvent = document.getElementById('groupByEvent').checked;
-    const separateHistory = document.getElementById('separateHistory').checked;
 
     // 显示骨架屏加载状态
     document.getElementById('newsContainer').innerHTML = `
@@ -384,18 +380,9 @@ function loadNews() {
         return;
     }
 
-    // 构建API URL
-    let baseUrl;
-    if (separateHistory) {
-        baseUrl = '/api/news/recent/separated';
-    } else if (groupByEvent) {
-        baseUrl = '/api/news/recent/grouped';
-    } else {
-        baseUrl = '/api/news/recent';
-    }
-    
-    let url = `${baseUrl}?limit=1000`;
-    
+    // 构建API URL - 统一使用 /api/news/recent 端点
+    let url = '/api/news/recent?limit=1000';
+
     if (hours === 'since_yesterday_digest') {
         url += '&since_yesterday_digest=true&hours=24';
     } else {
@@ -407,31 +394,24 @@ function loadNews() {
     });
 
     if (sourceId) url += `&source_id=${sourceId}`;
-    
+
     excludedSourceIds.forEach(sourceId => {
         url += `&exclude_source_id=${sourceId}`;
     });
-    
+
     if (excludeUsed) url += `&exclude_used=true`;
 
     axios.get(url)
         .then(response => {
             const container = document.getElementById('newsContainer');
             container.innerHTML = '';
-
-            if (separateHistory) {
-                renderSeparatedNews(response.data, container);
-            } else if (groupByEvent) {
-                renderGroupedNews(response.data, container);
-            } else {
-                renderListNews(response.data, container);
-            }
+            renderListNews(response.data, container);
         })
         .catch(error => {
             console.error('Error loading news:', error);
             document.getElementById('newsContainer').innerHTML = `
                 <div class="col-12 text-center py-5">
-                    <p class="text-danger">加载新闻失败</p>
+                    <p class="text-danger">加载新闻失败: ${error.message}</p>
                 </div>
             `;
             updateNewsStatsInfo(0, 'error');
@@ -440,131 +420,6 @@ function loadNews() {
 }
 
 // ==================== 渲染函数 ====================
-
-function renderSeparatedNews(data, container) {
-    const { fresh_news, similar_to_history } = data;
-    const totalNews = fresh_news.total + similar_to_history.total;
-
-    container.innerHTML = `
-        <div class="col-12 mb-3">
-            <div class="alert alert-info">
-                <i class="bi bi-info-circle"></i> 
-                共找到 ${totalNews} 条新闻：
-                ${fresh_news.total} 条今日新文章，${similar_to_history.total} 条与历史快报相似
-            </div>
-        </div>
-    `;
-    
-    updateNewsStatsInfo(totalNews, 'separated');
-    updateArticleCount(totalNews);
-
-    if (fresh_news.total > 0) {
-        const freshHeader = document.createElement('div');
-        freshHeader.className = 'col-12 mb-3';
-        freshHeader.innerHTML = `
-            <h5 class="text-primary">
-                <i class="bi bi-newspaper"></i> 今日新文章 (${fresh_news.total})
-            </h5>
-            <hr>
-        `;
-        container.appendChild(freshHeader);
-
-        fresh_news.items.forEach(news => {
-            renderNewsCard(news, container);
-        });
-    }
-
-    if (similar_to_history.total > 0) {
-        const similarHeader = document.createElement('div');
-        similarHeader.className = 'col-12 mb-3 mt-4';
-        similarHeader.innerHTML = `
-            <h5 class="text-muted">
-                <i class="bi bi-clock-history"></i> 与历史快报相似的文章 (${similar_to_history.total})
-            </h5>
-            <p class="text-muted small mb-2">以下文章与历史快报中的文章相似，可能是重复或相关内容</p>
-            <hr>
-        `;
-        container.appendChild(similarHeader);
-
-        similar_to_history.items.forEach(news => {
-            renderNewsCard(news, container, true);
-        });
-    }
-
-    if (totalNews === 0) {
-        container.innerHTML = `
-            <div class="col-12 text-center py-5">
-                <p class="text-muted">没有找到符合条件的新闻</p>
-            </div>
-        `;
-        updateNewsStatsInfo(0, 'separated');
-        updateArticleCount(0);
-    }
-}
-
-function renderGroupedNews(data, container) {
-    const { groups, total_news } = data;
-
-    if (groups.length === 0) {
-        container.innerHTML = `
-            <div class="col-12 text-center py-5">
-                <p class="text-muted">没有找到符合条件的新闻</p>
-            </div>
-        `;
-        updateNewsStatsInfo(0, 'grouped');
-        updateArticleCount(0);
-        return;
-    }
-
-    const standaloneGroups = groups.filter(group => group.is_standalone);
-    const eventGroups = groups.filter(group => !group.is_standalone);
-
-    container.innerHTML = `
-        <div class="col-12 mb-3">
-            <div class="alert alert-info">
-                <i class="bi bi-info-circle"></i> 
-                共 ${total_news} 条新闻：${standaloneGroups.length} 条独立新闻，${eventGroups.length} 个事件分组
-            </div>
-        </div>
-    `;
-    
-    updateNewsStatsInfo(total_news, 'grouped');
-    updateArticleCount(total_news);
-
-    if (standaloneGroups.length > 0) {
-        if (eventGroups.length > 0) {
-            const standaloneHeader = document.createElement('div');
-            standaloneHeader.className = 'col-12 mb-3';
-            standaloneHeader.innerHTML = `
-                <h5 class="text-muted">
-                    <i class="bi bi-newspaper"></i> 独立新闻 (${standaloneGroups.length})
-                </h5>
-                <hr>
-            `;
-            container.appendChild(standaloneHeader);
-        }
-
-        standaloneGroups.forEach(group => {
-            renderEventGroup(group, 0);
-        });
-
-        if (eventGroups.length > 0) {
-            const eventHeader = document.createElement('div');
-            eventHeader.className = 'col-12 mb-3 mt-4';
-            eventHeader.innerHTML = `
-                <h5 class="text-muted">
-                    <i class="bi bi-collection"></i> 事件分组 (${eventGroups.length})
-                </h5>
-                <hr>
-            `;
-            container.appendChild(eventHeader);
-        }
-    }
-
-    eventGroups.forEach((group, index) => {
-        renderEventGroup(group, index);
-    });
-}
 
 function renderListNews(data, container) {
     const { items } = data;
@@ -588,25 +443,22 @@ function renderListNews(data, container) {
     });
 }
 
-function renderNewsCard(news, container, isHistorySimilar = false) {
+function renderNewsCard(news, container) {
     const isSelected = selectedNews.has(news.id);
     const card = document.createElement('div');
     card.className = 'col-12 mb-3';
 
-    const cardExtraClasses = isHistorySimilar ? 'opacity-75 border-muted' : '';
-    const titlePrefix = isHistorySimilar ? '<i class="bi bi-clock-history text-muted" title="与历史快报相似"></i> ' : '';
-
     card.innerHTML = `
-        <div class="card news-card ${isSelected ? 'selected' : ''} ${cardExtraClasses}" data-id="${news.id}">
+        <div class="card news-card ${isSelected ? 'selected' : ''}" data-id="${news.id}">
             <div class="reading-indicator"></div>
             <div class="card-body">
                 <span class="category-badge">${getCategoryBadge(news.category)}</span>
                 <h5 class="card-title">
-                    ${titlePrefix}${news.generated_title || news.title}
-                    ${news.summary_source ? 
-                      (news.summary_source === 'original' 
-                        ? '<i class="fas fa-quote-left text-info ms-2" title="来自原文摘要"></i>' 
-                        : '<i class="fas fa-robot text-primary ms-2" title="AI生成总结"></i>') 
+                    ${news.generated_title || news.title}
+                    ${news.summary_source ?
+                      (news.summary_source === 'original'
+                        ? '<i class="fas fa-quote-left text-info ms-2" title="来自原文摘要"></i>'
+                        : '<i class="fas fa-robot text-primary ms-2" title="AI生成总结"></i>')
                       : ''}
                 </h5>
                 <p class="card-text summary-text">${truncateSummary(news.generated_summary || news.summary, 150)}</p>
@@ -617,7 +469,7 @@ function renderNewsCard(news, container, isHistorySimilar = false) {
                         <div><i class="bi bi-building text-secondary"></i> 来源: ${news.source_name || '未知来源'}</div>
                         <div class="mt-1">${formatTimeInfo(news)}</div>
                     </div>
-                    ${news.tokens_usage && news.is_processed ? 
+                    ${news.tokens_usage && news.is_processed ?
                         `<small class="text-primary" title="此文章的AI处理消耗了 ${calculateTotalTokens(news.tokens_usage)} 个tokens">
                             <i class="bi bi-cpu"></i> ${calculateTotalTokens(news.tokens_usage)} tokens
                         </small>` : ''}
@@ -642,113 +494,6 @@ function renderNewsCard(news, container, isHistorySimilar = false) {
     });
 }
 
-function renderEventGroup(group, index) {
-    const container = document.getElementById('newsContainer');
-    
-    if (group.is_standalone) {
-        renderStandaloneNews(group.primary);
-        return;
-    }
-    
-    const groupEl = document.createElement('div');
-    groupEl.className = 'col-12';
-    
-    const keyEntities = [];
-    if (group.entities.CVE && group.entities.CVE.length > 0) {
-        keyEntities.push(...group.entities.CVE.slice(0, 2));
-    }
-    if (group.entities['组织'] && group.entities['组织'].length > 0) {
-        keyEntities.push(...group.entities['组织'].slice(0, 2));
-    }
-    if (group.entities['产品'] && group.entities['产品'].length > 0) {
-        keyEntities.push(...group.entities['产品'].slice(0, 1));
-    }
-    
-    const isExpanded = true;
-    
-    groupEl.innerHTML = `
-        <div class="event-group" data-group-id="${group.id}">
-            <div class="event-header" onclick="toggleEventGroup('${group.id}')">
-                <div>
-                    <div class="event-label">
-                        <i class="bi bi-collection"></i> ${group.event_label}
-                    </div>
-                    <div class="event-entities">
-                        ${keyEntities.map(entity => `<span class="entity-tag">${entity}</span>`).join('')}
-                    </div>
-                </div>
-                <div class="event-meta">
-                    <span><i class="bi bi-newspaper"></i> ${group.news_count} 篇报道</span>
-                    <span><i class="bi bi-broadcast"></i> ${group.sources.length} 个来源</span>
-                    <i class="bi bi-chevron-down toggle-icon ${isExpanded ? '' : 'rotated'}"></i>
-                </div>
-            </div>
-            <div class="event-content ${isExpanded ? '' : 'collapsed'}" id="content-${group.id}">
-                <div class="primary-news">
-                    <h5>
-                        ${group.primary.generated_title || group.primary.title}
-                        <span class="badge bg-primary">主要新闻</span>
-                    </h5>
-                    <p>${truncateSummary(group.primary.generated_summary || group.primary.summary, 200)}</p>
-                    <div class="mt-2">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <div class="text-muted small">
-                                <div><i class="bi bi-building text-secondary"></i> 来源: ${group.primary.source_name || '未知来源'}</div>
-                                <div class="mt-1">${formatTimeInfo(group.primary)}</div>
-                            </div>
-                            ${group.primary.tokens_usage && group.primary.is_processed ? 
-                                `<small class="text-primary" title="此文章的AI处理消耗了 ${calculateTotalTokens(group.primary.tokens_usage)} 个tokens">
-                                    <i class="bi bi-cpu"></i> ${calculateTotalTokens(group.primary.tokens_usage)} tokens
-                                </small>` : ''}
-                        </div>
-                        <div>
-                            <button class="btn btn-sm btn-outline-primary me-2" onclick="viewNews(${group.primary.id})">
-                                查看详情
-                            </button>
-                            <button class="btn btn-sm ${selectedNews.has(group.primary.id) ? 'btn-success' : 'btn-outline-success'}" 
-                                    data-news-id="${group.primary.id}" onclick="toggleSelectNews(${group.primary.id})">
-                                ${selectedNews.has(group.primary.id) ? '已选择' : '选择'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                
-                ${group.related.length > 0 ? `
-                    <div class="related-news">
-                        <h6 class="text-muted mb-3">相关报道 (${group.related.length})</h6>
-                        ${group.related.map(news => `
-                            <div class="related-news-item">
-                                <div class="similarity-badge">${Math.round(group.similarity_scores[news.id] * 100)}% 相似</div>
-                                <h6>${news.generated_title || news.title}</h6>
-                                <div class="d-flex justify-content-between align-items-start mb-2">
-                                    <div class="text-muted small">
-                                        <div><i class="bi bi-building text-secondary"></i> 来源: ${news.source_name || '未知来源'}</div>
-                                        <div class="mt-1">${formatTimeInfo(news)}</div>
-                                    </div>
-                                    ${news.tokens_usage && news.is_processed ? 
-                                        `<small class="text-primary" title="此文章的AI处理消耗了 ${calculateTotalTokens(news.tokens_usage)} 个tokens">
-                                            <i class="bi bi-cpu"></i> ${calculateTotalTokens(news.tokens_usage)} tokens
-                                        </small>` : ''}
-                                </div>
-                                <div class="mt-2">
-                                    <button class="btn btn-sm btn-outline-primary me-2" onclick="viewNews(${news.id})">
-                                        查看
-                                    </button>
-                                    <button class="btn btn-sm ${selectedNews.has(news.id) ? 'btn-success' : 'btn-outline-success'}" 
-                                            data-news-id="${news.id}" onclick="toggleSelectNews(${news.id})">
-                                        ${selectedNews.has(news.id) ? '已选择' : '选择'}
-                                    </button>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                ` : ''}
-            </div>
-        </div>
-    `;
-    
-    container.appendChild(groupEl);
-}
 
 function renderStandaloneNews(news) {
     const container = document.getElementById('newsContainer');
@@ -925,8 +670,10 @@ function viewNews(newsId) {
         processBtn.onclick = function() {
             processNews(newsId);
         };
-        
-        const modal = new bootstrap.Modal(document.getElementById('newsDetailModal'));
+
+        // 使用 getOrCreateInstance 避免创建多个实例导致 backdrop 残留
+        const modalElement = document.getElementById('newsDetailModal');
+        const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
         modal.show();
     })
     .catch(error => {
@@ -993,18 +740,6 @@ function processNews(newsId) {
         });
 }
 
-function toggleEventGroup(groupId) {
-    const content = document.getElementById(`content-${groupId}`);
-    const icon = document.querySelector(`[data-group-id="${groupId}"] .toggle-icon`);
-    
-    if (content.classList.contains('collapsed')) {
-        content.classList.remove('collapsed');
-        icon.classList.remove('rotated');
-    } else {
-        content.classList.add('collapsed');
-        icon.classList.add('rotated');
-    }
-}
 
 // ==================== 快报生成 ====================
 
@@ -1013,8 +748,10 @@ function showGenerateDigestModal() {
         alert('请至少选择一条新闻');
         return;
     }
-    
-    const modal = new bootstrap.Modal(document.getElementById('generateDigestModal'));
+
+    // 使用 getOrCreateInstance 避免创建多个实例导致 backdrop 残留
+    const modalElement = document.getElementById('generateDigestModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
     modal.show();
 }
 
@@ -1150,7 +887,7 @@ function updateArticleCount(total) {
     }
     
     setTimeout(() => {
-        articleElements = Array.from(document.querySelectorAll('.news-card, .event-group'));
+        articleElements = Array.from(document.querySelectorAll('.news-card'));
         updateScrollProgress();
     }, 100);
 }
@@ -1353,17 +1090,11 @@ function formatTokensUsage(tokensUsage) {
 function updateNewsStatsInfo(totalNews, mode) {
     const statsEl = document.getElementById('newsStatsInfo');
     if (!statsEl) return;
-    
+
     let modeText = '';
     switch(mode) {
         case 'list':
             modeText = '列表模式';
-            break;
-        case 'grouped':
-            modeText = '分组模式';
-            break;
-        case 'separated':
-            modeText = '分离模式';
             break;
         case 'error':
             modeText = '加载失败';
@@ -1375,6 +1106,6 @@ function updateNewsStatsInfo(totalNews, mode) {
             modeText = '未知模式';
             break;
     }
-    
+
     statsEl.textContent = `当前显示 ${totalNews} 条新闻 (${modeText})`;
 }

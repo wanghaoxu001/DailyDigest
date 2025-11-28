@@ -46,51 +46,35 @@ from app.services.task_execution_service import task_execution_service
 
 def execute_cache_cleanup(execution_id: int):
     """执行缓存清理逻辑"""
-    from app.models.event_group import EventGroup
-    
     db = SessionLocal()
     try:
         logger.info("正在清理过期缓存记录...")
         task_execution_service.update_task_progress(
-            execution_id, 1, 3, "正在清理过期缓存记录..."
+            execution_id, 1, 2, "正在清理过期的任务执行记录..."
         )
-        
+
         start_time = datetime.now()
-        cutoff_time = datetime.now() - timedelta(days=3)
-        
-        # 删除过期的事件分组缓存
-        deleted_count = db.query(EventGroup).filter(
-            EventGroup.created_at < cutoff_time
-        ).delete(synchronize_session=False)
-        db.commit()
-        
-        logger.info(f"清理了 {deleted_count} 条过期的事件分组缓存")
-        
+
         # 清理过期的任务执行记录
-        task_execution_service.update_task_progress(
-            execution_id, 2, 3, "正在清理过期的任务执行记录..."
-        )
         logger.info("正在清理过期的任务执行记录...")
-        
+
         cleaned_executions = task_execution_service.cleanup_old_records()
         logger.info(f"清理了 {cleaned_executions} 条过期的任务执行记录")
-        
+
         # 完成任务
         execution_time = (datetime.now() - start_time).total_seconds()
-        message = f"缓存清理完成，用时: {execution_time:.2f}秒，清理了 {deleted_count} 条事件分组缓存，{cleaned_executions} 条任务执行记录"
+        message = f"缓存清理完成，用时: {execution_time:.2f}秒，清理了 {cleaned_executions} 条任务执行记录"
         logger.info(message)
-        
+
         task_execution_service.complete_task(
             execution_id,
             'success',
             message,
             {
-                'deleted_event_groups': deleted_count,
-                'deleted_task_executions': cleaned_executions,
-                'cutoff_time': cutoff_time.isoformat()
+                'deleted_task_executions': cleaned_executions
             },
-            deleted_count + cleaned_executions,
-            deleted_count + cleaned_executions,
+            cleaned_executions,
+            cleaned_executions,
             0
         )
         

@@ -139,11 +139,9 @@ class BusinessLogFilter(logging.Filter):
         "app.services.llm_processor",
         "app.services.digest_generator",
         "app.services.duplicate_detector",
-        "app.services.news_similarity",
         "app.services.task_execution_service",
         "app.services.task_scheduler",
         "app.services.crawl_tasks",
-        "app.services.event_group_tasks",
         "app.services.cache_cleanup_tasks",
     }
 
@@ -432,7 +430,6 @@ class LogManager:
             "database": ("app.db", logging.INFO),
             "digest": ("app.services.digest_generator", logging.INFO),
             "task_crawl_sources": ("scripts.cron_jobs.crawl_sources_job", logging.INFO),
-            "task_event_groups": ("scripts.cron_jobs.event_groups_job", logging.INFO),
             "task_cache_cleanup": ("scripts.cron_jobs.cache_cleanup_job", logging.INFO),
             # 新增：业务日志聚合缓冲区（排除中间件和系统日志）
             "business": ("", logging.INFO),  # 特殊处理，后面添加过滤器
